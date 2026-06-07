@@ -98,7 +98,7 @@ export default async function AnnouncementsPage({
       {!notConfigured && rows.length > 0 && (
         <>
           {filtered.length === 0 ? (
-            <p className="rounded-xl border border-rule/70 bg-paper-raised/50 p-8 text-center text-sm text-ink-2">
+            <p className="rounded-xl glass-panel p-8 text-center text-sm text-ink-2">
               No announcements match the current filters.
             </p>
           ) : (
@@ -121,7 +121,7 @@ function AnnouncementRowCard({ row }: { row: AnnouncementOverviewRow }) {
   return (
     <Link
       href={`/announcements/${row.id}`}
-      className="group/card block rounded-xl border border-rule/70 bg-paper-raised/50 p-5 transition-colors hover:border-brand/40"
+      className="group/card block rounded-xl glass-panel p-5 transition-colors hover:border-brand/40"
     >
       <article className="flex flex-col gap-3">
         <header className="flex flex-wrap items-start gap-3">
@@ -183,7 +183,7 @@ function Summary({
   const order: AnnouncementStatus[] = ["live", "scheduled", "draft", "expired", "archived"];
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="rounded-full border border-rule/70 bg-paper-raised/50 px-3 py-1 text-xs font-medium text-ink-2">
+      <span className="rounded-full glass-panel px-3 py-1 text-xs font-medium text-ink-2">
         {total} total
       </span>
       {order
@@ -191,7 +191,7 @@ function Summary({
         .map((key) => (
           <span
             key={key}
-            className="inline-flex items-center gap-2 rounded-full border border-rule/70 bg-paper-raised/50 px-3 py-1 text-xs"
+            className="inline-flex items-center gap-2 rounded-full glass-panel px-3 py-1 text-xs"
           >
             <span aria-hidden className={cn("size-2 rounded-full", STATUS_DOT[key])} />
             <span className="text-ink-2">{STATUS_LABELS[key]}</span>
@@ -204,7 +204,7 @@ function Summary({
 
 function EmptyState() {
   return (
-    <div className="rounded-xl border border-rule/70 bg-paper-raised/50 p-12 text-center">
+    <div className="rounded-xl glass-panel p-12 text-center">
       <div className="flex flex-col items-center gap-2">
         <span className="flex size-10 items-center justify-center rounded-full bg-brand/15 text-brand">
           <Megaphone className="size-5" />
@@ -221,7 +221,7 @@ function EmptyState() {
 
 function NotConfigured() {
   return (
-    <div className="rounded-xl border border-rule/70 bg-paper-raised/50 p-12 text-center">
+    <div className="rounded-xl glass-panel p-12 text-center">
       <div className="flex flex-col items-center gap-2">
         <span className="flex size-10 items-center justify-center rounded-full bg-paper-sunken text-ink-3">
           <Megaphone className="size-5" />

@@ -47,10 +47,8 @@ export function OverviewCard({
   const body = (
     <article
       className={cn(
-        "group/card relative flex h-full flex-col gap-4 rounded-2xl border bg-paper-raised/60 p-5 transition-colors",
-        isLive
-          ? "border-rule/70 hover:border-brand/40"
-          : "border-dashed border-rule/60 bg-paper-raised/30",
+        "group/card adm-rise relative flex h-full flex-col gap-4 rounded-2xl p-5",
+        isLive ? "glass-card" : "border border-dashed border-rule/60 bg-paper-raised/20",
         showAttention && "border-brand/30",
       )}
     >

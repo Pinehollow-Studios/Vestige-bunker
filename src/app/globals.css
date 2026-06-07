@@ -371,3 +371,170 @@
   letter-spacing: 0.04em;
   line-height: 1;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Modern layer — ported from the marketing site (glass + motion).
+   Premium frosted glass over an animated aurora; gradient mint CTAs;
+   scroll-reveal + count-up + scroll progress. The dashboard reads like
+   the same product as vestige.golf, just denser.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --rule-strong: rgba(255, 255, 255, 0.18);
+  --gradient-accent: linear-gradient(135deg, #5be4c3 0%, #8fe85b 100%);
+  --gradient-accent-tilt: linear-gradient(160deg, #5be4c3 0%, #8fe85b 100%);
+}
+
+/* Frosted glass surfaces — subtle white-gradient over the ocean, blurred. */
+.glass-panel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012));
+  border: 1px solid var(--rule);
+  backdrop-filter: blur(16px) saturate(135%);
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+}
+
+/* Interactive glass — lifts + mint glow on hover (cards, tiles, links). */
+.glass-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.014));
+  border: 1px solid var(--rule);
+  backdrop-filter: blur(16px) saturate(135%);
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+  transition:
+    border-color 0.3s ease,
+    transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.4s ease;
+}
+.glass-card:hover {
+  border-color: var(--rule-strong);
+  transform: translateY(-3px);
+  box-shadow: 0 24px 60px -28px rgba(91, 228, 195, 0.25);
+}
+
+/* Gradient mint CTA. */
+.btn-accent {
+  background: var(--gradient-accent);
+  color: var(--brand-fg);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.3) inset,
+    0 12px 24px -8px rgba(91, 228, 195, 0.45);
+  transition:
+    transform 0.18s ease,
+    filter 0.2s ease;
+}
+.btn-accent:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+.btn-accent:active {
+  transform: translateY(0) scale(0.99);
+}
+
+/* Gradient text (mint → lime). */
+.text-gradient-accent {
+  background: var(--gradient-accent);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Mount-rise — cards fade + lift in on render. Stagger via inline delay. */
+@keyframes adm-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.adm-rise {
+  animation: adm-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* Animated aurora backdrop — quieter than the marketing hero; fixed behind
+   the whole app. Mounted by <AuroraBackdrop /> in the dashboard layout. */
+.adm-aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.adm-aurora-blob {
+  position: absolute;
+  width: 60vmax;
+  height: 60vmax;
+  border-radius: 50%;
+  filter: blur(110px);
+  will-change: transform;
+  mix-blend-mode: screen;
+}
+.adm-blob-1 {
+  top: -22vmax;
+  left: -12vmax;
+  opacity: 0.26;
+  background: radial-gradient(circle, #5be4c3 0%, transparent 60%);
+  animation: adm-drift-1 26s ease-in-out infinite alternate;
+}
+.adm-blob-2 {
+  bottom: -26vmax;
+  right: -12vmax;
+  opacity: 0.2;
+  background: radial-gradient(circle, #8fe85b 0%, transparent 60%);
+  animation: adm-drift-2 32s ease-in-out infinite alternate;
+}
+.adm-blob-3 {
+  top: 18vmax;
+  right: 12vmax;
+  width: 40vmax;
+  height: 40vmax;
+  opacity: 0.14;
+  background: radial-gradient(circle, #5b9be4 0%, transparent 60%);
+  animation: adm-drift-3 38s ease-in-out infinite alternate;
+}
+@keyframes adm-drift-1 {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(16vmax, 8vmax) scale(1.12); }
+}
+@keyframes adm-drift-2 {
+  0% { transform: translate(0, 0) scale(1.05); }
+  100% { transform: translate(-12vmax, -8vmax) scale(1); }
+}
+@keyframes adm-drift-3 {
+  0% { transform: translate(0, 0) scale(0.9); }
+  100% { transform: translate(-10vmax, 12vmax) scale(1.12); }
+}
+
+/* Pulse dot (live eyebrow). */
+@keyframes adm-pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.82); }
+}
+@keyframes adm-pulse-ring {
+  0% { transform: scale(0.7); opacity: 0.6; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+/* Scroll progress bar (mounted by <ScrollProgress />). */
+.adm-scroll-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  background: var(--gradient-accent);
+  z-index: 100;
+  pointer-events: none;
+  transition: width 90ms linear;
+  box-shadow: 0 0 8px rgba(91, 228, 195, 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .adm-aurora-blob,
+  .adm-rise,
+  .glass-card {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -370,7 +370,7 @@ export default async function OverviewPage() {
         </p>
       )}
 
-      <details className="group rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+      <details className="group rounded-xl glass-panel p-5">
         <summary className="cursor-pointer list-none text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-3 transition-colors hover:text-brand">
           Developer tools
         </summary>

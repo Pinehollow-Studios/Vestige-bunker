@@ -122,7 +122,7 @@ export default async function CourseDetailPage(props: { params: RouteParams }) {
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-rule/70 bg-paper-raised/50 px-4 py-3 text-xs">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl glass-panel px-4 py-3 text-xs">
         <span className="inline-flex items-center gap-1 rounded-full border border-rule/70 bg-paper-sunken/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-2">
           {TIER_LABELS[row.tier]}
         </span>

@@ -110,7 +110,7 @@ export default async function UsersPage({
 
       <form
         action="/users"
-        className="flex flex-wrap items-center gap-2 rounded-xl border border-rule/70 bg-paper-raised/50 p-3"
+        className="flex flex-wrap items-center gap-2 rounded-xl glass-panel p-3"
       >
         <label className="flex flex-1 items-center gap-2 rounded-lg border border-rule/70 bg-paper-sunken/60 px-3 py-2 focus-within:border-brand/40">
           <Search className="size-4 text-ink-3" aria-hidden />
@@ -172,7 +172,7 @@ export default async function UsersPage({
             }
           />
         ) : (
-          <div className="overflow-hidden rounded-xl border border-rule/70 bg-paper-raised/50">
+          <div className="overflow-hidden rounded-xl glass-panel">
             <table className="w-full text-sm">
               <thead className="border-b border-rule/60 text-left text-[10px] uppercase tracking-wider text-ink-3">
                 <tr>
@@ -248,7 +248,7 @@ function StatTile({
           ? "text-alert"
           : "text-ink";
   return (
-    <div className="rounded-xl border border-rule/70 bg-paper-raised/50 p-4">
+    <div className="rounded-xl glass-panel p-4">
       <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-3">
         {label}
       </p>
@@ -280,7 +280,7 @@ function StatusChip({ status }: { status: AccountStatus }) {
 
 function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-xl border border-rule/70 bg-paper-raised/50 px-4 py-12 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-xl glass-panel px-4 py-12 text-center">
       <span className="flex size-10 items-center justify-center rounded-full bg-brand/15 text-brand">
         <UsersIcon className="size-5" aria-hidden />
       </span>

@@ -90,7 +90,7 @@ export default async function AnalyticsPage() {
       />
 
       {metabaseUrl ? (
-        <div className="overflow-hidden rounded-xl border border-rule/70 bg-paper-raised/50">
+        <div className="overflow-hidden rounded-xl glass-panel">
           <iframe
             src={metabaseUrl}
             className="h-[720px] w-full"
@@ -99,7 +99,7 @@ export default async function AnalyticsPage() {
           />
         </div>
       ) : (
-        <div className="rounded-xl border border-rule/70 bg-paper-raised/50 p-4">
+        <div className="rounded-xl glass-panel p-4">
           <div className="flex items-start gap-3">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand/15 text-brand">
               <BarChart3 className="size-4" />
@@ -130,7 +130,7 @@ export default async function AnalyticsPage() {
           {stats.map((stat) => (
             <div
               key={stat.label}
-              className="rounded-xl border border-rule/70 bg-paper-raised/50 p-4"
+              className="rounded-xl glass-panel p-4"
             >
               <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-3">
                 {stat.label}
@@ -207,7 +207,7 @@ export default async function AnalyticsPage() {
 
 function QueryCard({ title, sql }: { title: string; sql: string }) {
   return (
-    <div className="rounded-xl border border-rule/70 bg-paper-raised/50 p-4">
+    <div className="rounded-xl glass-panel p-4">
       <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-3">
         {title}
       </p>
@@ -234,7 +234,7 @@ function ExternalCard({
       href={href}
       target="_blank"
       rel="noreferrer"
-      className="flex items-start gap-3 rounded-xl border border-rule/70 bg-paper-raised/50 p-4 transition-colors hover:border-brand"
+      className="flex items-start gap-3 rounded-xl glass-panel p-4 transition-colors hover:border-brand"
     >
       <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand/15 text-brand">
         {icon}

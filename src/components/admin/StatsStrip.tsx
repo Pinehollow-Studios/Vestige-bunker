@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { CountUp } from "@/components/admin/Motion";
 
 export type Stat = {
   key: string;
@@ -22,7 +23,7 @@ export type Stat = {
 export function StatsStrip({ stats }: { stats: Stat[] }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {stats.map((stat) => {
+      {stats.map((stat, idx) => {
         const isNull = stat.value === null;
         const tone = stat.tone ?? "default";
         const showAttention = !isNull && tone === "attention" && (stat.value ?? 0) > 0;
@@ -30,17 +31,19 @@ export function StatsStrip({ stats }: { stats: Stat[] }) {
           <div
             key={stat.key}
             className={cn(
-              "flex flex-col gap-2 rounded-xl border border-rule/70 bg-paper-raised/50 p-4",
+              "glass-panel adm-rise flex flex-col gap-2 rounded-2xl p-4",
               showAttention && "border-brand/30",
             )}
+            style={{ animationDelay: `${idx * 70}ms` }}
           >
             <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-3">
               {stat.label}
             </span>
-            {/* Fraunces numeral — mirrors the app's HeroNumeral. */}
-            <span
+            {/* Fraunces numeral that counts up — mirrors the app's HeroNumeral. */}
+            <CountUp
+              value={isNull ? null : stat.value}
               className={cn(
-                "font-display text-[30px] font-medium leading-none tabular-nums tracking-[-0.01em]",
+                "font-display text-[32px] font-medium leading-none tabular-nums tracking-[-0.02em]",
                 isNull
                   ? "text-ink-3/40"
                   : showAttention
@@ -49,9 +52,7 @@ export function StatsStrip({ stats }: { stats: Stat[] }) {
                       ? "text-ink-2"
                       : "text-ink",
               )}
-            >
-              {isNull ? "—" : stat.value}
-            </span>
+            />
             {stat.hint && (
               <span className="text-[11px] leading-snug text-ink-3">{stat.hint}</span>
             )}

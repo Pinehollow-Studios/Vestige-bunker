@@ -221,7 +221,7 @@ function PreviewCard({
   tier: BadgeTier;
 }) {
   return (
-    <section className="space-y-4 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <section className="space-y-4 rounded-xl glass-panel p-5">
       <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">
         Live preview
       </h3>
@@ -482,7 +482,7 @@ function Lifecycle({
   }
 
   return (
-    <section className="space-y-3 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <section className="space-y-3 rounded-xl glass-panel p-5">
       <header className="space-y-1">
         <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">Lifecycle</h3>
         <p className="text-xs text-ink-3">Currently <span className="font-medium text-ink-2">{STATUS_LABELS[status]}</span>.</p>
@@ -553,7 +553,7 @@ function ArtCard({ row }: { row: BadgeDefinitionRow }) {
   }
 
   return (
-    <section className="space-y-2 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <section className="space-y-2 rounded-xl glass-panel p-5">
       <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">Custom artwork</h3>
       <p className="text-xs text-ink-3">
         Optional. Overrides the composed medallion with an uploaded PNG (transparent, square). Most badges don&apos;t need this.
@@ -603,7 +603,7 @@ function ManualGrant({ row }: { row: BadgeDefinitionRow }) {
   }
 
   return (
-    <section className="space-y-2 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <section className="space-y-2 rounded-xl glass-panel p-5">
       <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">Grant to a user</h3>
       <p className="text-xs text-ink-3">Paste a user UUID to award or remove this badge directly.</p>
       <Input value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="user UUID" className="font-mono text-xs" />
@@ -619,7 +619,7 @@ function ManualGrant({ row }: { row: BadgeDefinitionRow }) {
 
 function Card({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-4 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <section className="space-y-4 rounded-xl glass-panel p-5">
       <header className="space-y-1">
         <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">{title}</h3>
         {hint && <p className="text-xs text-ink-3">{hint}</p>}

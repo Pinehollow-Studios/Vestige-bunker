@@ -146,7 +146,7 @@ function FlagRow({ row }: { row: Row }) {
       ? row.display_name
       : `@${row.username ?? "unknown"}`;
   return (
-    <li className="rounded-xl border border-rule/70 bg-paper-raised/50 p-4">
+    <li className="rounded-xl glass-panel p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
@@ -256,7 +256,7 @@ function AccountStatusBadge({ status }: { status: "active" | "restricted" | "sus
 
 function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-xl border border-rule/70 bg-paper-raised/50 px-4 py-12 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-xl glass-panel px-4 py-12 text-center">
       <span className="flex size-10 items-center justify-center rounded-full bg-brand/15 text-brand">
         <Shield className="size-5" aria-hidden />
       </span>

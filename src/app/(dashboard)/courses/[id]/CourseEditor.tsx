@@ -95,7 +95,7 @@ function CoverEditor({
   }
 
   return (
-    <section className="space-y-3 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <section className="space-y-3 rounded-xl glass-panel p-5">
       <header className="space-y-1">
         <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">
           Hero photo
@@ -200,7 +200,7 @@ function EditorialForm({
     Number(holeCount) !== row.hole_count;
 
   return (
-    <section className="space-y-4 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <section className="space-y-4 rounded-xl glass-panel p-5">
       <header className="space-y-1">
         <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">
           Editorial
@@ -373,7 +373,7 @@ function parseNullableInt(input: string): number | null {
 
 function MetaPanel({ row }: { row: CourseDetailRow }) {
   return (
-    <section className="space-y-4 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <section className="space-y-4 rounded-xl glass-panel p-5">
       <header className="space-y-1">
         <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">
           Meta

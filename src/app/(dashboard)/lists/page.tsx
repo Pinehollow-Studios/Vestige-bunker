@@ -88,7 +88,7 @@ export default async function ListVerificationPage() {
 
 function EmptyQueue() {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-xl border border-rule/70 bg-paper-raised/50 px-4 py-12 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-xl glass-panel px-4 py-12 text-center">
       <span className="flex size-10 items-center justify-center rounded-full bg-brand/15 text-brand">
         <ListChecks className="size-5" aria-hidden />
       </span>
@@ -102,7 +102,7 @@ function QueueSummary({ queue }: { queue: QueueRow[] }) {
   const oldest = queue[0]?.verification_requested_at;
   const newest = queue[queue.length - 1]?.verification_requested_at;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rule/70 bg-paper-raised/50 px-4 py-3 text-xs text-ink-2">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl glass-panel px-4 py-3 text-xs text-ink-2">
       <div className="flex items-center gap-2">
         <span aria-hidden className="size-2 rounded-full bg-brand" />
         <span className="font-semibold text-ink">
@@ -147,7 +147,7 @@ function QueueCard({
   const truncated = courses.length < row.course_count;
 
   return (
-    <article className="overflow-hidden rounded-xl border border-rule/70 bg-paper-raised/50">
+    <article className="overflow-hidden rounded-xl glass-panel">
       <CoverBanner
         url={coverURL}
         title={row.list_name}

@@ -194,7 +194,7 @@ function Filters({
     <form
       action="/courses"
       method="get"
-      className="space-y-3 rounded-xl border border-rule/70 bg-paper-raised/50 p-4"
+      className="space-y-3 rounded-xl glass-panel p-4"
     >
       <div className="flex items-center gap-2">
         <span aria-hidden className="text-ink-3">
@@ -286,7 +286,7 @@ function CourseRowCard({ row }: { row: CourseRow }) {
   return (
     <Link
       href={`/courses/${row.id}`}
-      className="group/card flex gap-3 rounded-xl border border-rule/70 bg-paper-raised/50 p-4 transition-colors hover:border-brand/40"
+      className="group/card flex gap-3 rounded-xl glass-panel p-4 transition-colors hover:border-brand/40"
     >
       <CoverThumb url={cover} title={row.name} />
       <div className="flex min-w-0 flex-1 flex-col justify-between gap-1.5">
@@ -359,7 +359,7 @@ function CoverThumb({ url, title }: { url: string | null; title: string }) {
 
 function EmptyState() {
   return (
-    <div className="rounded-xl border border-rule/70 bg-paper-raised/50 p-12 text-center">
+    <div className="rounded-xl glass-panel p-12 text-center">
       <div className="flex flex-col items-center gap-2">
         <span
           aria-hidden

@@ -296,7 +296,7 @@ function ReportHeader({
 
 function ReportBody({ report }: { report: FeedbackReport }) {
   return (
-    <article className="space-y-4 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <article className="space-y-4 rounded-xl glass-panel p-5">
       <Section label="What happened" body={report.body} />
       {report.expected_behaviour && (
         <Section label="Expected" body={report.expected_behaviour} />
@@ -349,7 +349,7 @@ function ThreadTimeline({
   messages: FeedbackMessage[];
 }) {
   return (
-    <article className="space-y-4 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <article className="space-y-4 rounded-xl glass-panel p-5">
       <header className="flex items-center justify-between">
         <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3">
           Thread
@@ -569,7 +569,7 @@ function SidebarCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-3 rounded-xl border border-rule/70 bg-paper-raised/50 p-4">
+    <div className="space-y-3 rounded-xl glass-panel p-4">
       <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3">
         {title}
       </p>

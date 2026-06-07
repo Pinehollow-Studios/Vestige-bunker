@@ -134,7 +134,7 @@ export default async function CrashesQueuePage({
           {rows.length === 0 ? (
             <EmptyQueue />
           ) : (
-            <ol className="divide-y divide-rule/60 overflow-hidden rounded-xl border border-rule/70 bg-paper-raised/50">
+            <ol className="divide-y divide-rule/60 overflow-hidden rounded-xl glass-panel">
               {rows.map((row) => (
                 <li key={row.id}>
                   <CrashRow row={row} />
@@ -184,7 +184,7 @@ function ActiveFiltersStrip({
   if (query) filters.push({ key: "q", label: `text: "${query}"` });
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rule/70 bg-paper-raised/50 px-4 py-3 text-xs text-ink-2">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl glass-panel px-4 py-3 text-xs text-ink-2">
       <div className="flex flex-wrap items-center gap-3">
         <span className="font-semibold text-ink">
           {count} {count === 1 ? "row" : "rows"}
@@ -216,7 +216,7 @@ function ActiveFiltersStrip({
 
 function EmptyQueue() {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-xl border border-rule/70 bg-paper-raised/50 p-12 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-xl glass-panel p-12 text-center">
       <span
         aria-hidden
         className="flex size-10 items-center justify-center rounded-full bg-brand/15 text-brand"
@@ -349,7 +349,7 @@ function PaginationFooter({
       {offset > 0 ? (
         <Link
           href={paramsURL(params, previousOffset)}
-          className="rounded-lg border border-rule/70 bg-paper-raised/50 px-3 py-1 font-semibold text-ink-2 hover:border-brand"
+          className="rounded-lg glass-panel px-3 py-1 font-semibold text-ink-2 hover:border-brand"
         >
           ← Previous {pageSize}
         </Link>
@@ -362,7 +362,7 @@ function PaginationFooter({
       {hasNext ? (
         <Link
           href={paramsURL(params, nextOffset)}
-          className="rounded-lg border border-rule/70 bg-paper-raised/50 px-3 py-1 font-semibold text-ink-2 hover:border-brand"
+          className="rounded-lg glass-panel px-3 py-1 font-semibold text-ink-2 hover:border-brand"
         >
           Next {pageSize} →
         </Link>

@@ -200,7 +200,7 @@ function CrashHeader({
 
 function CrashMetaGrid({ crash }: { crash: CrashReportEnriched }) {
   return (
-    <article className="grid grid-cols-1 gap-4 rounded-xl border border-rule/70 bg-paper-raised/50 p-4 sm:grid-cols-2">
+    <article className="grid grid-cols-1 gap-4 rounded-xl glass-panel p-4 sm:grid-cols-2">
       <MetaRow
         icon={<Smartphone className="size-3.5" />}
         label="Device"
@@ -305,7 +305,7 @@ async function SentryDetailSection({ eventId }: { eventId: string }) {
   }
 
   return (
-    <article className="space-y-4 rounded-xl border border-rule/70 bg-paper-raised/50 p-4">
+    <article className="space-y-4 rounded-xl glass-panel p-4">
       <header className="flex items-center justify-between">
         <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3">
           Stack trace + breadcrumbs (from Sentry)
@@ -320,7 +320,7 @@ async function SentryDetailSection({ eventId }: { eventId: string }) {
 
 function SentryDetailSkeleton() {
   return (
-    <article className="rounded-xl border border-rule/70 bg-paper-raised/50 p-4">
+    <article className="rounded-xl glass-panel p-4">
       <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3">
         Loading from Sentry…
       </p>
@@ -466,7 +466,7 @@ function SentryTags({ tags }: { tags: SentryEventDetail["tags"] }) {
 
 function LinkedFeedbackSection({ rows }: { rows: CrashLinkedFeedback[] }) {
   return (
-    <article className="space-y-3 rounded-xl border border-rule/70 bg-paper-raised/50 p-4">
+    <article className="space-y-3 rounded-xl glass-panel p-4">
       <header className="flex items-center justify-between">
         <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3">
           Linked feedback ({rows.length})

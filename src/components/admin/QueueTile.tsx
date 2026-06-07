@@ -23,7 +23,7 @@ export function QueueTile({ href, title, description, count, status }: Props) {
   const body = (
     <Card
       className={cn(
-        "h-full transition-all",
+        "h-full glass-card",
         status === "live" &&
           "hover:border-brand/40",
         showAttention && "border-brand/30 ring-brand/15",
