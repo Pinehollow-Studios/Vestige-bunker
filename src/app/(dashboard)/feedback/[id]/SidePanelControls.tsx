@@ -96,7 +96,7 @@ export function SidePanelControls({
   isSuperAdmin: boolean;
 }) {
   return (
-    <div className="space-y-4 rounded-xl border border-rule/70 bg-paper-raised/50 p-4">
+    <div className="space-y-4 rounded-xl glass-panel p-4">
       <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3">
         Triage
       </p>

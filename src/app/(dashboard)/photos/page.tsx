@@ -116,7 +116,7 @@ export default async function PhotosPage() {
 
 function PhotoTile({ row }: { row: Row }) {
   return (
-    <figure className="overflow-hidden rounded-xl border border-rule/70 bg-paper-raised/50">
+    <figure className="overflow-hidden rounded-xl glass-panel">
       <div className="flex aspect-square items-center justify-center bg-paper-sunken/60 text-ink-3">
         <ImageIcon className="size-6" aria-hidden />
       </div>
@@ -155,7 +155,7 @@ function StatTile({
           ? "text-amber"
           : "text-ink";
   return (
-    <div className="rounded-xl border border-rule/70 bg-paper-raised/50 p-4">
+    <div className="rounded-xl glass-panel p-4">
       <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-3">
         {label}
       </p>
@@ -189,7 +189,7 @@ function StateChip({ state }: { state: PhotoModerationState }) {
 
 function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-xl border border-rule/70 bg-paper-raised/50 px-4 py-12 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-xl glass-panel px-4 py-12 text-center">
       <span className="flex size-10 items-center justify-center rounded-full bg-brand/15 text-brand">
         <ImageIcon className="size-5" aria-hidden />
       </span>

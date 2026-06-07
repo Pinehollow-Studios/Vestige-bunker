@@ -115,7 +115,7 @@ export default async function CuratedListEditorPage(props: { params: RouteParams
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-rule/70 bg-paper-raised/50 px-4 py-3 text-xs">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl glass-panel px-4 py-3 text-xs">
         <span
           className={cn(
             "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",

@@ -107,7 +107,7 @@ function CoverEditor({
   }
 
   return (
-    <section className="space-y-3 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <section className="space-y-3 rounded-xl glass-panel p-5">
       <header className="space-y-1">
         <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">Cover image</h3>
         <p className="text-xs text-ink-3">
@@ -238,7 +238,7 @@ function EditorialForm({ row }: { row: CuratedListRow }) {
     isOrdered !== row.is_ordered;
 
   return (
-    <section className="space-y-4 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <section className="space-y-4 rounded-xl glass-panel p-5">
       <header className="space-y-1">
         <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">Editorial</h3>
         <p className="text-xs text-ink-3">
@@ -462,7 +462,7 @@ function PublishControls({ row }: { row: CuratedListRow }) {
   }
 
   return (
-    <section className="space-y-4 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <section className="space-y-4 rounded-xl glass-panel p-5">
       <header className="space-y-1">
         <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">Publish</h3>
         <p className="text-xs text-ink-3">
@@ -586,7 +586,7 @@ function CourseSection({
 }) {
   const onListIds = useMemo(() => new Set(courses.map((c) => c.course_id)), [courses]);
   return (
-    <section className="space-y-4 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <section className="space-y-4 rounded-xl glass-panel p-5">
       <header className="flex items-center justify-between gap-3">
         <div className="space-y-1">
           <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">Courses</h3>

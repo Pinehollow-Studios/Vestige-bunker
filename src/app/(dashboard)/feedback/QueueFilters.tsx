@@ -105,7 +105,7 @@ export function QueueFilters({
     initialSearch.length > 0;
 
   return (
-    <div className="space-y-4 rounded-xl border border-rule/70 bg-paper-raised/50 p-4">
+    <div className="space-y-4 rounded-xl glass-panel p-4">
       <header className="flex items-center justify-between">
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-3">
           Filter &amp; search

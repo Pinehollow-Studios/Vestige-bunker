@@ -12,11 +12,21 @@ export function SectionHeader({ title, description, eyebrow, actions }: Props) {
     <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="space-y-2">
         {eyebrow && (
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">
+          <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">
+            <span aria-hidden className="relative inline-flex size-1.5 items-center justify-center">
+              <span
+                className="absolute inset-0 rounded-full border border-brand"
+                style={{ animation: "adm-pulse-ring 2.2s ease-out infinite" }}
+              />
+              <span
+                className="size-1.5 rounded-full bg-brand"
+                style={{ animation: "adm-pulse-dot 1.8s ease-in-out infinite" }}
+              />
+            </span>
             {eyebrow}
           </p>
         )}
-        <h1 className="display-serif text-3xl font-semibold leading-tight text-ink sm:text-4xl">
+        <h1 className="display-serif text-[2rem] font-semibold leading-[1.05] tracking-[-0.02em] text-ink sm:text-[2.6rem]">
           {title}
         </h1>
         {description && (

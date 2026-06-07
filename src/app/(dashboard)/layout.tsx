@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { FlaskConical } from "lucide-react";
 import { Sidebar } from "@/components/admin/Sidebar";
 import { TopBar } from "@/components/admin/TopBar";
+import { AuroraBackdrop, ScrollProgress } from "@/components/admin/Motion";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { createClient } from "@/lib/supabase/server";
 import { activeEnvKey, DEV_SWITCH_ENABLED, ENV_COOKIE } from "@/lib/supabase/env";
@@ -87,12 +88,16 @@ export default async function DashboardLayout({
   };
 
   return (
-    <div className="min-h-dvh bg-background">
+    <div className="relative min-h-dvh">
+      {/* Animated aurora behind everything; glass surfaces float over it.
+          Content sits at z-10; the fixed sidebar at z-30. */}
+      <AuroraBackdrop />
+      <ScrollProgress />
       {/* Sidebar is position:fixed at lg+; the right column gets
           `lg:pl-64` to compensate so the main content never slides
           under it. On <lg the sidebar is hidden entirely. */}
       <Sidebar counts={counts} adminRole={admin.role} />
-      <div className="flex min-h-dvh min-w-0 flex-col lg:pl-64">
+      <div className="relative z-10 flex min-h-dvh min-w-0 flex-col lg:pl-64">
         <TopBar admin={admin} env={env} devSwitchEnabled={DEV_SWITCH_ENABLED} />
         {DEV_SWITCH_ENABLED && env === "dev" && (
           <div className="flex items-start gap-3 border-b border-amber/40 bg-amber/10 px-6 py-2.5 text-xs text-amber">

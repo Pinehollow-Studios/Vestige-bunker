@@ -80,7 +80,7 @@ function BadgeCard({
   return (
     <Link
       href={`/badges/${row.id}`}
-      className="group/card flex gap-4 rounded-xl border border-rule/70 bg-paper-raised/50 p-4 transition-colors hover:border-brand/40"
+      className="group/card flex gap-4 rounded-xl glass-panel p-4 transition-colors hover:border-brand/40"
     >
       <div className="shrink-0">
         <BadgeMedallion
@@ -148,13 +148,13 @@ function Summary({ buckets, total }: { buckets: Record<BadgeStatus, number>; tot
   const order: BadgeStatus[] = ["live", "draft", "archived"];
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="rounded-full border border-rule/70 bg-paper-raised/50 px-3 py-1 text-xs font-medium text-ink-2">
+      <span className="rounded-full glass-panel px-3 py-1 text-xs font-medium text-ink-2">
         {total} total
       </span>
       {order.map((key) => (
         <span
           key={key}
-          className="inline-flex items-center gap-2 rounded-full border border-rule/70 bg-paper-raised/50 px-3 py-1 text-xs"
+          className="inline-flex items-center gap-2 rounded-full glass-panel px-3 py-1 text-xs"
         >
           <span aria-hidden className={cn("size-2 rounded-full", STATUS_DOT[key])} />
           <span className="text-ink-2">{STATUS_LABELS[key]}</span>
@@ -167,7 +167,7 @@ function Summary({ buckets, total }: { buckets: Record<BadgeStatus, number>; tot
 
 function EmptyState() {
   return (
-    <div className="rounded-xl border border-rule/70 bg-paper-raised/50 p-12 text-center">
+    <div className="rounded-xl glass-panel p-12 text-center">
       <div className="flex flex-col items-center gap-2">
         <span className="flex size-10 items-center justify-center rounded-full bg-brand/15 text-brand">
           <Sparkles className="size-5" />

@@ -22,7 +22,7 @@ export function Screenshots({ screenshots, signedURLs }: Props) {
   if (screenshots.length === 0) return null;
 
   return (
-    <article className="space-y-3 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <article className="space-y-3 rounded-xl glass-panel p-5">
       <header className="flex items-center justify-between">
         <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3">
           Screenshots ({screenshots.length})

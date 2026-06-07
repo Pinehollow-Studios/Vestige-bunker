@@ -277,7 +277,7 @@ function PreviewCard({
   const hasAction = actionKind !== "dismiss" && actionLabel.trim().length > 0;
   const primaryLabel = hasAction ? actionLabel : dismissLabel || "Got it";
   return (
-    <section className="space-y-3 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <section className="space-y-3 rounded-xl glass-panel p-5">
       <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">
         Live preview
       </h3>
@@ -817,7 +817,7 @@ function Lifecycle({
   }
 
   return (
-    <section className="space-y-4 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <section className="space-y-4 rounded-xl glass-panel p-5">
       <header className="space-y-1">
         <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">Lifecycle</h3>
         <p className="text-xs text-ink-3">
@@ -891,7 +891,7 @@ function HeroCard({ row, heroURL }: { row: AnnouncementRow; heroURL: string | nu
   }
 
   return (
-    <section className="space-y-2 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <section className="space-y-2 rounded-xl glass-panel p-5">
       <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">Hero image</h3>
       <p className="text-xs text-ink-3">
         Optional banner at the top of the card. Upload a pre-sized JPEG / PNG (wide, ~16:9).
@@ -970,7 +970,7 @@ function RecipientsSection({
   const filters: (RecipientState | "all")[] = ["all", "acted", "dismissed", "seen", "not_seen"];
 
   return (
-    <section className="space-y-4 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <section className="space-y-4 rounded-xl glass-panel p-5">
       <header className="space-y-1">
         <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">
           Who&apos;s seen it
@@ -1076,7 +1076,7 @@ function RecipientStateChip({ state }: { state: RecipientState }) {
 
 function Card({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-4 rounded-xl border border-rule/70 bg-paper-raised/50 p-5">
+    <section className="space-y-4 rounded-xl glass-panel p-5">
       <header className="space-y-1">
         <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">{title}</h3>
         {hint && <p className="text-xs text-ink-3">{hint}</p>}
