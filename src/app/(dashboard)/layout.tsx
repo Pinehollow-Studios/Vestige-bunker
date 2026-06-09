@@ -7,6 +7,7 @@ import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { createClient } from "@/lib/supabase/server";
 import { tryCreateServiceClient } from "@/lib/supabase/admin";
 import { activeEnvKey, DEV_SWITCH_ENABLED, ENV_COOKIE } from "@/lib/supabase/env";
+import { FEEDBACK_ACTIVE_WORK_STAGES } from "@/lib/feedback/types";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -56,7 +57,10 @@ export default async function DashboardLayout({
     supabase
       .from("feedback_reports")
       .select("id", { count: "exact", head: true })
-      .in("status", ["new", "triaged", "inProgress"]),
+      // Open tickets = active work_stage (matches the queue's Active tab).
+      // Counting by reporter-facing `status` over-counts: post-split,
+      // "Won't fix" closes the work_stage but leaves `status` open.
+      .in("work_stage", FEEDBACK_ACTIVE_WORK_STAGES),
     adminRead
       .from("photos")
       .select("id", { count: "exact", head: true })

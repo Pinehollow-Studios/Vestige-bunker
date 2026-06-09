@@ -5,6 +5,34 @@
 
 ---
 
+## 2026-06-10 — Three operator fixes (open-ticket count, admin names, announcement recipients)
+
+- **Sidebar feedback count = open tickets.** It counted reporter-facing `status`
+  (`new`/`triaged`/`inProgress`), which over-counts after the external/internal
+  split: a "Won't fix" closes the `work_stage` but deliberately leaves `status`
+  untouched, so closed tickets kept counting. Now counts active `work_stage`
+  (`FEEDBACK_ACTIVE_WORK_STAGES`) — same definition as the queue's Active tab.
+  Admin-only change (`layout.tsx`).
+- **Admin accounts show names, not numbers.** Tom + Jack sign in with
+  "branded admin login" accounts (both super_admin) that never onboarded, so
+  they had no `public.users` row — every admin surface (feedback owner picker,
+  owner chips, TopBar greeting) fell back to the short user id, e.g. `30313a69`.
+  iOS migration `20260610110000_admin_account_names.sql` inserts a minimal
+  `friendsOnly` profile for each (display names Tom / Jack). Env-guarded (only
+  where the matching `auth.users` row exists, so it's a no-op on dev) and
+  idempotent (`on conflict (id) do nothing`); the protected-columns guard passes
+  migration context through. `friendsOnly` + no rounds/friends keeps them out of
+  public search / feeds / leaderboards.
+- **Announcement "who's seen it" view fixed.** Opening an announcement's
+  recipients raised `missing FROM-clause entry for table "t"`: in
+  `admin_announcement_recipients`, the `merged` CTE joined/`coalesce`d on `t.uid`
+  but the targeted-users CTE is named `tgt` and was never aliased `t`. iOS
+  migration `20260610100000_fix_announcement_recipients_alias.sql`
+  `create or replace`s the function with `from tgt t` — otherwise verbatim.
+
+Both iOS migrations ship to prod via the `prod-deploy` action. Verified
+`tsc` / `eslint` / `next build` clean.
+
 ## 2026-06-09 — Changelog view mode (read-only viewing + View/Edit toggle)
 
 The `/changelog` detail surface was edit-only — the only way to read a release's

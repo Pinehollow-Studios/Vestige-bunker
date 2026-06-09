@@ -274,3 +274,17 @@ canonical write-up lives on disk.
   just the default presentation). No schema/data change — pure UI over the
   already-seeded prod tables. Verified `tsc`/`eslint`/`build`. Long-form in
   `CHANGELOG.md`.
+- **2026-06-10** — Three operator fixes: (1) the sidebar **Feedback** count now
+  counts **open** tickets by active `work_stage` (`FEEDBACK_ACTIVE_WORK_STAGES`,
+  matching the queue's Active tab) instead of reporter-facing `status` — which
+  over-counted because a "Won't fix" closes the work_stage but leaves `status`
+  open. (2) The admin **accounts get real names**: the two "branded admin login"
+  super_admins (tom@ / jack@) had no `public.users` row, so each showed as a
+  short id (a "number") in the owner picker / TopBar — iOS migration
+  `20260610110000_admin_account_names.sql` gives them minimal `friendsOnly`
+  profiles (Tom / Jack), env-guarded + idempotent. (3) The announcement
+  **"who's seen it" view** raised `missing FROM-clause entry for table "t"` —
+  iOS migration `20260610100000_fix_announcement_recipients_alias.sql`
+  `create or replace`s `admin_announcement_recipients` aliasing the `tgt` CTE as
+  `t`. Both iOS migrations deploy to prod via `prod-deploy`. Verified
+  `tsc`/`eslint`/`build`. Long-form in `CHANGELOG.md`.
