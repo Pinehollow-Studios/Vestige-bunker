@@ -7,6 +7,11 @@ import { tryCreateServiceClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { TOOL_GROUPS } from "@/lib/admin/tools";
 import { statusFor, type CuratedListStatus } from "./curated/types";
+import {
+  type AppVersion,
+  currentVersion,
+  VERSION_STATUS_LABELS,
+} from "./changelog/types";
 
 export const dynamic = "force-dynamic";
 
@@ -95,6 +100,7 @@ export default async function OverviewPage() {
     coursesCountRes,
     coursesWithPolygonRes,
     friendshipsCountRes,
+    versionsRes,
   ] = await Promise.all([
     supabase.rpc("admin_list_verification_queue"),
     supabase
@@ -145,6 +151,14 @@ export default async function OverviewPage() {
       .from("friendships")
       .select("id", { count: "exact", head: true })
       .eq("status", "accepted"),
+    // Changelog — every version (draft + released) for the current-version
+    // readout. Missing-table (pre-migration) returns null data → empty list.
+    supabase
+      .from("app_versions")
+      .select("id, version, major, minor, patch, title, summary, status, released_at, created_at, updated_at")
+      .order("major", { ascending: false })
+      .order("minor", { ascending: false })
+      .order("patch", { ascending: false }),
   ]);
 
   const queue: ListQueueRow[] = (queueRes.data as ListQueueRow[] | null) ?? [];
@@ -214,6 +228,15 @@ export default async function OverviewPage() {
     primary: row.name,
     secondary: prettyStatus(curatedStatus(row)),
     trailing: relativeTime(row.updated_at),
+  }));
+
+  const versions: AppVersion[] = (versionsRes.data as AppVersion[] | null) ?? [];
+  const current = currentVersion(versions);
+  const versionPreview = versions.slice(0, 4).map((v) => ({
+    key: v.id,
+    primary: `v${v.version}`,
+    secondary: v.title ?? VERSION_STATUS_LABELS[v.status],
+    trailing: v.released_at ? relativeTime(v.released_at) : "draft",
   }));
 
   return (
@@ -361,6 +384,17 @@ export default async function OverviewPage() {
                 ? "No public lists are awaiting verification."
                 : `${queue.length} user ${queue.length === 1 ? "list is" : "lists are"} awaiting the verified stamp — see /lists.`}
             </p>
+          </OverviewCard>
+
+          <OverviewCard
+            href="/changelog"
+            title="Changelog"
+            description="What shipped in each release — and which reported bugs each version tackled."
+            status="live"
+            accent={current ? `v${current.version} current` : "no releases"}
+            ctaLabel="Open changelog"
+          >
+            <PreviewList items={versionPreview} emptyLabel="No versions tracked yet." />
           </OverviewCard>
         </div>
       </section>

@@ -7,11 +7,12 @@ import {
   HelpCircle,
   Image as ImageIcon,
   Lightbulb,
-  Map,
+  Map as MapIcon,
   MapPin,
   MessageSquare,
   Paintbrush,
   Repeat,
+  Rocket,
   UserRound,
   Zap,
 } from "lucide-react";
@@ -26,8 +27,9 @@ import {
   type FeedbackQueueRow,
   type FeedbackSeverity,
   type FeedbackStatus,
-  type FeedbackUserSeverity,
   type FeedbackWorkStage,
+  FEEDBACK_ACTIVE_WORK_STAGES,
+  FEEDBACK_DONE_WORK_STAGES,
   areaSlugLabel,
   kindLabel,
   priorityLabel,
@@ -35,11 +37,21 @@ import {
   reproducibilityLabel,
   severityLabel,
   statusLabel,
-  userSeverityLabel,
+  workStageIsDone,
   workStageLabel,
   workStageTone,
 } from "@/lib/feedback/types";
 import { QueueFilters } from "./QueueFilters";
+
+/** The three queue partitions. `active` is the working set (everything not
+ * Fixed / Won't fix); `done` is the kept record of completed work; `all`
+ * removes the partition. */
+type QueueView = "active" | "done" | "all";
+
+function parseView(value: SearchParamArray): QueueView {
+  const v = Array.isArray(value) ? value[0] : value;
+  return v === "done" || v === "all" ? v : "active";
+}
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +93,17 @@ export default async function FeedbackQueuePage({
   const workStages = asArray<FeedbackWorkStage>(params.workStage);
   const priorities = asArray<FeedbackPriority>(params.priority);
   const ownerFilter = asArray<string>(params.owner);
+  const view = parseView(params.view);
+  // The Active / Done partition is just a work_stage filter. An explicit Stage
+  // chip (if the operator picks one) overrides the partition; otherwise the
+  // view supplies the stage set ("all" sends none).
+  const viewStages: FeedbackWorkStage[] | null =
+    view === "active"
+      ? FEEDBACK_ACTIVE_WORK_STAGES
+      : view === "done"
+        ? FEEDBACK_DONE_WORK_STAGES
+        : null;
+  const effectiveWorkStages = workStages ?? viewStages;
   const query =
     typeof params.q === "string"
       ? params.q
@@ -114,7 +137,7 @@ export default async function FeedbackQueuePage({
   // Admin work-tracking filters (2026-06-08). Only sent when active so
   // base browsing still resolves against a project that predates the
   // admin-workflow migration (e.g. prod before its coordinated deploy).
-  if (workStages) queueArgs.p_work_stage_filter = workStages;
+  if (effectiveWorkStages) queueArgs.p_work_stage_filter = effectiveWorkStages;
   if (priorities) queueArgs.p_priority_filter = priorities;
   if (ownerFilter) queueArgs.p_owner_filter = ownerFilter;
 
@@ -124,15 +147,28 @@ export default async function FeedbackQueuePage({
   ]);
   const queue = (data as FeedbackQueueRow[] | null) ?? [];
 
-  const byStatus = bucketByStatus(queue);
+  // Overlay the changelog↔feedback loop: which of these reports have shipped,
+  // and in which version. One batch query keyed by the visible report ids.
+  // Missing table (pre-migration) returns null → empty map → no markers.
+  const reportIds = queue.map((r) => r.report_id);
+  let shippedByReport = new Map<string, string>();
+  if (reportIds.length > 0) {
+    const { data: shippedRows } = await supabase
+      .from("app_version_changes")
+      .select("feedback_report_id, app_versions ( version, major, minor, patch )")
+      .in("feedback_report_id", reportIds);
+    shippedByReport = buildShippedMap(shippedRows);
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <SectionHeader
         eyebrow="Queues · review"
         title="Feedback triage"
-        description="In-app reports — bugs, data errors, requests, and notes. Highest severity first."
+        description="In-app reports — bugs, data errors, requests, and notes. Highest priority first."
       />
+
+      <ViewTabs view={view} params={params} />
 
       <QueueFilters initialSearch={query} owners={owners} />
 
@@ -144,14 +180,14 @@ export default async function FeedbackQueuePage({
 
       {!error && (
         <>
-          <SummaryStrip byStatus={byStatus} total={queue.length} />
+          <SummaryStrip rows={queue} view={view} />
           {queue.length === 0 ? (
             <EmptyQueue />
           ) : (
             <ol className="divide-y divide-rule/60 overflow-hidden rounded-xl glass-panel">
               {queue.map((row) => (
                 <li key={row.report_id}>
-                  <ReportRow row={row} />
+                  <ReportRow row={row} shippedVersion={shippedByReport.get(row.report_id)} />
                 </li>
               ))}
             </ol>
@@ -286,17 +322,62 @@ function severityTone(severity: FeedbackSeverity | null): ChipTone {
   }
 }
 
-function userSeverityTone(value: FeedbackUserSeverity | null): ChipTone {
-  switch (value) {
-    case "blocker":
-      return "alert";
-    case "major":
-      return "amber";
-    case "minor":
-      return "brand";
-    default:
-      return "neutral";
+// --------------------------------------------------------------
+// View tabs — Active / Done / All partition over the queue.
+// --------------------------------------------------------------
+
+function ViewTabs({
+  view,
+  params,
+}: {
+  view: QueueView;
+  params: Record<string, SearchParamArray>;
+}) {
+  const tabs: { key: QueueView; label: string }[] = [
+    { key: "active", label: "Active" },
+    { key: "done", label: "Done" },
+    { key: "all", label: "All" },
+  ];
+  return (
+    <div className="inline-flex items-center gap-1 rounded-xl glass-panel p-1 text-xs">
+      {tabs.map((tab) => {
+        const isActive = tab.key === view;
+        return (
+          <Link
+            key={tab.key}
+            href={viewURL(params, tab.key)}
+            className={`rounded-lg px-3 py-1.5 font-semibold transition-colors ${
+              isActive
+                ? "bg-brand/15 text-brand"
+                : "text-ink-3 hover:text-ink-2"
+            }`}
+          >
+            {tab.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Build a URL that flips the `view` param (dropping any explicit Stage chips
+ * so the partition is authoritative, and resetting pagination). */
+function viewURL(
+  params: Record<string, SearchParamArray>,
+  view: QueueView,
+): string {
+  const next = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (key === "offset" || key === "view" || key === "workStage") continue;
+    if (Array.isArray(value)) {
+      for (const v of value) next.append(key, v);
+    } else if (typeof value === "string" && value.length > 0) {
+      next.set(key, value);
+    }
   }
+  if (view !== "active") next.set("view", view);
+  const query = next.toString();
+  return query ? `/feedback?${query}` : "/feedback";
 }
 
 // --------------------------------------------------------------
@@ -304,41 +385,49 @@ function userSeverityTone(value: FeedbackUserSeverity | null): ChipTone {
 // --------------------------------------------------------------
 
 function SummaryStrip({
-  byStatus,
-  total,
+  rows,
+  view,
 }: {
-  byStatus: Record<FeedbackStatus, number>;
-  total: number;
+  rows: FeedbackQueueRow[];
+  view: QueueView;
 }) {
-  const open = byStatus.new + byStatus.triaged + byStatus.inProgress;
+  const total = rows.length;
+  const fixed = rows.filter(
+    (r) =>
+      r.work_stage === "fixed" ||
+      r.work_stage === "resolved" ||
+      r.work_stage === "released",
+  ).length;
+  const closed = rows.filter((r) => r.work_stage === "wontFix").length;
+  const active = rows.filter((r) => !workStageIsDone(r.work_stage)).length;
+  const noun =
+    view === "done" ? "done" : view === "all" ? "report" : "active";
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl glass-panel px-4 py-3 text-xs text-ink-2">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-semibold text-ink">
-          {total} {total === 1 ? "report" : "reports"}
+          {total} {total === 1 ? noun : `${noun}${noun === "report" ? "s" : ""}`}
         </span>
-        <span aria-hidden className="text-ink-3">
-          ·
-        </span>
-        <span className="text-ink-3">
-          {open} open
-          {byStatus.resolved > 0 && (
-            <>
+        {(view === "done" || view === "all") && (fixed > 0 || closed > 0) && (
+          <>
+            <span aria-hidden className="text-ink-3">
+              ·
+            </span>
+            <span className="text-ink-3">
+              {view === "all" && (
+                <>
+                  <span className="font-medium text-ink-2">{active}</span> active
+                  {" · "}
+                </>
+              )}
+              <span className="font-medium text-ink-2">{fixed}</span> fixed
               {" · "}
-              <span className="font-medium text-ink-2">{byStatus.resolved}</span>{" "}
-              resolved
-            </>
-          )}
-          {byStatus.wontFix > 0 && (
-            <>
-              {" · "}
-              <span className="font-medium text-ink-2">{byStatus.wontFix}</span>{" "}
-              won&apos;t fix
-            </>
-          )}
-        </span>
+              <span className="font-medium text-ink-2">{closed}</span> closed
+            </span>
+          </>
+        )}
       </div>
-      <span className="text-ink-3">severity ↓ · latest activity ↓</span>
+      <span className="text-ink-3">priority ↓ · latest activity ↓</span>
     </div>
   );
 }
@@ -370,7 +459,13 @@ function EmptyQueue() {
 // Row
 // --------------------------------------------------------------
 
-function ReportRow({ row }: { row: FeedbackQueueRow }) {
+function ReportRow({
+  row,
+  shippedVersion,
+}: {
+  row: FeedbackQueueRow;
+  shippedVersion?: string;
+}) {
   const reporterAvatar = avatarURL(row.user_id, row.reporter_avatar_photo_id);
   const reporterDisplay =
     row.reporter_display_name ?? row.reporter_username ?? "anonymous";
@@ -460,6 +555,12 @@ function ReportRow({ row }: { row: FeedbackQueueRow }) {
                   (row.owner_username ? `@${row.owner_username}` : "assigned")}
               </span>
             )}
+            {shippedVersion && (
+              <span className="inline-flex items-center gap-1 font-medium text-brand">
+                <Rocket aria-hidden className="size-3" />
+                Shipped in v{shippedVersion}
+              </span>
+            )}
           </div>
         </div>
 
@@ -483,13 +584,6 @@ function ReportRow({ row }: { row: FeedbackQueueRow }) {
               className={`${CHIP_BASE} ${toneClasses(severityTone(row.severity))}`}
             >
               {severityLabel(row.severity)}
-            </span>
-          )}
-          {row.user_severity && (
-            <span
-              className={`${CHIP_BASE} ${toneClasses(userSeverityTone(row.user_severity))}`}
-            >
-              {userSeverityLabel(row.user_severity)}
             </span>
           )}
         </div>
@@ -527,7 +621,7 @@ function kindIcon(kind: FeedbackKind) {
     case "bug":
       return <Bug aria-hidden className={cls} />;
     case "dataError":
-      return <Map aria-hidden className={cls} />;
+      return <MapIcon aria-hidden className={cls} />;
     case "featureRequest":
       return <Lightbulb aria-hidden className={cls} />;
     case "general":
@@ -549,20 +643,27 @@ function kindIcon(kind: FeedbackKind) {
 // Helpers
 // --------------------------------------------------------------
 
-function bucketByStatus(
-  rows: FeedbackQueueRow[],
-): Record<FeedbackStatus, number> {
-  const acc: Record<FeedbackStatus, number> = {
-    new: 0,
-    triaged: 0,
-    inProgress: 0,
-    resolved: 0,
-    wontFix: 0,
-  };
-  for (const row of rows) {
-    acc[row.status] += 1;
+/**
+ * Reduce app_version_changes rows (tagged to the visible reports) into a
+ * report-id → best version string map. A report can appear in more than one
+ * version; we keep the highest by semver rank. PostgREST embeds the parent as
+ * an object, but we normalise array-or-object defensively.
+ */
+function buildShippedMap(rows: unknown): Map<string, string> {
+  const best = new Map<string, { version: string; rank: number }>();
+  if (!Array.isArray(rows)) return new Map();
+  for (const row of rows as Array<{ feedback_report_id?: string; app_versions?: unknown }>) {
+    const reportId = row.feedback_report_id;
+    if (!reportId) continue;
+    const av = Array.isArray(row.app_versions) ? row.app_versions[0] : row.app_versions;
+    if (!av || typeof av !== "object") continue;
+    const v = av as { version?: string; major?: number; minor?: number; patch?: number };
+    if (!v.version) continue;
+    const rank = (v.major ?? 0) * 1_000_000 + (v.minor ?? 0) * 1_000 + (v.patch ?? 0);
+    const existing = best.get(reportId);
+    if (!existing || rank > existing.rank) best.set(reportId, { version: v.version, rank });
   }
-  return acc;
+  return new Map(Array.from(best, ([k, val]) => [k, val.version]));
 }
 
 function formatRelative(iso: string): string {

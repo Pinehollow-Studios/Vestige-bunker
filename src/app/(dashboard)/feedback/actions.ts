@@ -53,38 +53,21 @@ export async function postReply(
   return { ok: true };
 }
 
-export async function transitionStatus(
-  reportId: string,
-  newStatus: string,
-  resolutionNote: string | null,
-): Promise<ActionResult> {
-  await requireAdmin();
-  const supabase = await createWriteClient();
-  const { error } = await supabase.rpc("transition_status", {
-    p_report_id: reportId,
-    p_new_status: newStatus,
-    p_resolution_note: resolutionNote || null,
-  });
-  if (error) {
-    console.error("transitionStatus", error);
-    return { error: error.message };
-  }
-  revalidatePath(`/feedback/${reportId}`);
-  revalidatePath("/feedback");
-  return { ok: true };
-}
-
+// Sets the operator work stage. The optional `note` only reaches the reporter
+// on the two external stages (2026-06-09 split): for `inProgress` it's posted
+// as a reply, for `fixed` it's stored as the resolution note. Internal stages
+// ignore it. The SQL param is still named p_resolution_note.
 export async function setWorkStage(
   reportId: string,
   stage: string,
-  resolutionNote: string | null,
+  note: string | null,
 ): Promise<ActionResult> {
   await requireAdmin();
   const supabase = await createWriteClient();
   const { error } = await supabase.rpc("set_work_stage", {
     p_report_id: reportId,
     p_stage: stage,
-    p_resolution_note: resolutionNote || null,
+    p_resolution_note: note || null,
   });
   if (error) {
     console.error("setWorkStage", error);
@@ -145,25 +128,6 @@ export async function setSeverity(
   });
   if (error) {
     console.error("setSeverity", error);
-    return { error: error.message };
-  }
-  revalidatePath(`/feedback/${reportId}`);
-  revalidatePath("/feedback");
-  return { ok: true };
-}
-
-export async function setTags(
-  reportId: string,
-  tags: string[],
-): Promise<ActionResult> {
-  await requireAdmin();
-  const supabase = await createWriteClient();
-  const { error } = await supabase.rpc("set_tags", {
-    p_report_id: reportId,
-    p_tags: tags,
-  });
-  if (error) {
-    console.error("setTags", error);
     return { error: error.message };
   }
   revalidatePath(`/feedback/${reportId}`);

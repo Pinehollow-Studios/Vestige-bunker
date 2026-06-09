@@ -1,0 +1,364 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/requireAdmin";
+import { type ChangeKind, parseVersion } from "./types";
+
+export type ActionResult<T = void> =
+  | { ok: true; data?: T }
+  | { ok: false; message: string };
+
+/** A trimmed feedback row for the link picker (from admin_feedback_queue). */
+export type FeedbackSearchRow = {
+  id: string;
+  kind: string;
+  status: string;
+  body_preview: string;
+};
+
+function revalidateVersion(id: string) {
+  revalidatePath("/changelog");
+  revalidatePath(`/changelog/${id}`);
+}
+
+function isUniqueViolation(message: string): boolean {
+  const m = message.toLowerCase();
+  return m.includes("duplicate") || m.includes("unique") || m.includes("already exists");
+}
+
+// ── Versions ────────────────────────────────────────────────────────────
+
+/**
+ * Create a fresh version (defaults to a draft) and redirect into its editor.
+ * The display string is parsed into major/minor/patch for ordering; both
+ * `version` and the (major,minor,patch) tuple are unique in the DB, so a repeat
+ * is reported rather than silently duplicated.
+ */
+export async function createVersion(version: string): Promise<ActionResult<string>> {
+  const parsed = parseVersion(version);
+  if (!parsed) {
+    return { ok: false, message: "Use a version like 0.1.2 (or 0.1)." };
+  }
+
+  const admin = await requireAdmin();
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("app_versions")
+    .insert({
+      version: parsed.version,
+      major: parsed.major,
+      minor: parsed.minor,
+      patch: parsed.patch,
+      status: "draft",
+      created_by_admin_id: admin.id,
+      last_edited_by_admin_id: admin.id,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    if (isUniqueViolation(error.message)) {
+      return { ok: false, message: `Version ${parsed.version} already exists.` };
+    }
+    return { ok: false, message: error.message };
+  }
+  revalidatePath("/changelog");
+  redirect(`/changelog/${data.id}`);
+}
+
+export type VersionPatch = {
+  version?: string;
+  title?: string | null;
+  summary?: string | null;
+};
+
+/**
+ * Patch a version's editorial fields. Changing `version` re-parses
+ * major/minor/patch so ordering stays correct. Empty strings on the optional
+ * text fields coerce to null; `updated_at` is set by the table trigger.
+ */
+export async function updateVersion(
+  id: string,
+  patch: VersionPatch,
+): Promise<ActionResult> {
+  const admin = await requireAdmin();
+  const supabase = await createClient();
+  const update: Record<string, unknown> = {};
+
+  if (patch.version !== undefined) {
+    const parsed = parseVersion(patch.version);
+    if (!parsed) return { ok: false, message: "Use a version like 0.1.2 (or 0.1)." };
+    update.version = parsed.version;
+    update.major = parsed.major;
+    update.minor = parsed.minor;
+    update.patch = parsed.patch;
+  }
+  if (patch.title !== undefined) update.title = patch.title?.trim() || null;
+  if (patch.summary !== undefined) update.summary = patch.summary?.trim() || null;
+
+  if (Object.keys(update).length === 0) return { ok: true };
+  update.last_edited_by_admin_id = admin.id;
+
+  const { error } = await supabase.from("app_versions").update(update).eq("id", id);
+  if (error) {
+    if (isUniqueViolation(error.message)) {
+      return { ok: false, message: "That version number is already taken." };
+    }
+    return { ok: false, message: error.message };
+  }
+  revalidateVersion(id);
+  return { ok: true };
+}
+
+/**
+ * Flip a version between draft and released. Releasing stamps `released_at`
+ * with now() when it isn't already set; reverting to draft leaves the recorded
+ * date in place (it's editable on its own). The date itself can be overridden
+ * via setReleasedAt.
+ */
+export async function setReleased(
+  id: string,
+  released: boolean,
+): Promise<ActionResult> {
+  const admin = await requireAdmin();
+  const supabase = await createClient();
+
+  const update: Record<string, unknown> = {
+    status: released ? "released" : "draft",
+    last_edited_by_admin_id: admin.id,
+  };
+  if (released) {
+    const { data } = await supabase
+      .from("app_versions")
+      .select("released_at")
+      .eq("id", id)
+      .maybeSingle();
+    if (!data?.released_at) update.released_at = new Date().toISOString();
+  }
+
+  const { error } = await supabase.from("app_versions").update(update).eq("id", id);
+  if (error) return { ok: false, message: error.message };
+  revalidateVersion(id);
+  return { ok: true };
+}
+
+/** Set (or clear) the release date directly. `null` clears it. */
+export async function setReleasedAt(
+  id: string,
+  releasedAt: string | null,
+): Promise<ActionResult> {
+  const admin = await requireAdmin();
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("app_versions")
+    .update({ released_at: releasedAt, last_edited_by_admin_id: admin.id })
+    .eq("id", id);
+  if (error) return { ok: false, message: error.message };
+  revalidateVersion(id);
+  return { ok: true };
+}
+
+/** Hard delete a version (cascades its change lines) — super_admin only. */
+export async function deleteVersion(id: string): Promise<ActionResult> {
+  const admin = await requireAdmin();
+  if (admin.role !== "super_admin") {
+    return { ok: false, message: "Delete requires super_admin." };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase.from("app_versions").delete().eq("id", id);
+  if (error) return { ok: false, message: error.message };
+  revalidatePath("/changelog");
+  redirect("/changelog");
+}
+
+// ── Change lines ──────────────────────────────────────────────────────────
+
+/** Append a change line to a version (sorts after the existing lines). */
+export async function addChange(
+  versionId: string,
+  kind: ChangeKind,
+  summary: string,
+): Promise<ActionResult<string>> {
+  const text = summary.trim();
+  if (!text) return { ok: false, message: "Write the change first." };
+
+  const admin = await requireAdmin();
+  const supabase = await createClient();
+
+  const { data: last } = await supabase
+    .from("app_version_changes")
+    .select("sort_index")
+    .eq("version_id", versionId)
+    .order("sort_index", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextSort = (last?.sort_index ?? -1) + 1;
+
+  const { data, error } = await supabase
+    .from("app_version_changes")
+    .insert({
+      version_id: versionId,
+      kind,
+      summary: text,
+      sort_index: nextSort,
+      created_by_admin_id: admin.id,
+    })
+    .select("id")
+    .single();
+
+  if (error) return { ok: false, message: error.message };
+  revalidateVersion(versionId);
+  return { ok: true, data: data.id };
+}
+
+export type ChangePatch = { kind?: ChangeKind; summary?: string };
+
+export async function updateChange(
+  versionId: string,
+  changeId: string,
+  patch: ChangePatch,
+): Promise<ActionResult> {
+  await requireAdmin();
+  const supabase = await createClient();
+  const update: Record<string, unknown> = {};
+  if (patch.kind !== undefined) update.kind = patch.kind;
+  if (patch.summary !== undefined) {
+    const text = patch.summary.trim();
+    if (!text) return { ok: false, message: "A change line can't be empty." };
+    update.summary = text;
+  }
+  if (Object.keys(update).length === 0) return { ok: true };
+
+  const { error } = await supabase
+    .from("app_version_changes")
+    .update(update)
+    .eq("id", changeId);
+  if (error) return { ok: false, message: error.message };
+  revalidateVersion(versionId);
+  return { ok: true };
+}
+
+export async function deleteChange(
+  versionId: string,
+  changeId: string,
+): Promise<ActionResult> {
+  await requireAdmin();
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("app_version_changes")
+    .delete()
+    .eq("id", changeId);
+  if (error) return { ok: false, message: error.message };
+  revalidateVersion(versionId);
+  return { ok: true };
+}
+
+/**
+ * Persist a new line order for a version. The editor sends the full ordered id
+ * list after a move; we rewrite `sort_index` to match. Simpler + more robust
+ * than swap-with-neighbour, and the line count per version is small.
+ */
+export async function reorderChanges(
+  versionId: string,
+  orderedIds: string[],
+): Promise<ActionResult> {
+  await requireAdmin();
+  const supabase = await createClient();
+
+  const results = await Promise.all(
+    orderedIds.map((id, index) =>
+      supabase
+        .from("app_version_changes")
+        .update({ sort_index: index })
+        .eq("id", id)
+        .eq("version_id", versionId),
+    ),
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) return { ok: false, message: failed.error.message };
+  revalidateVersion(versionId);
+  return { ok: true };
+}
+
+// ── Feedback link (the loop) ────────────────────────────────────────────
+
+/** Tag a change line to a feedback report (link-only; no work_stage change). */
+export async function linkFeedback(
+  versionId: string,
+  changeId: string,
+  reportId: string,
+): Promise<ActionResult> {
+  await requireAdmin();
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("app_version_changes")
+    .update({ feedback_report_id: reportId })
+    .eq("id", changeId);
+  if (error) return { ok: false, message: error.message };
+  revalidateVersion(versionId);
+  revalidatePath(`/feedback/${reportId}`);
+  revalidatePath("/feedback");
+  return { ok: true };
+}
+
+export async function unlinkFeedback(
+  versionId: string,
+  changeId: string,
+): Promise<ActionResult> {
+  await requireAdmin();
+  const supabase = await createClient();
+  // Capture the report we're unlinking so its thread page can revalidate.
+  const { data: existing } = await supabase
+    .from("app_version_changes")
+    .select("feedback_report_id")
+    .eq("id", changeId)
+    .maybeSingle();
+
+  const { error } = await supabase
+    .from("app_version_changes")
+    .update({ feedback_report_id: null })
+    .eq("id", changeId);
+  if (error) return { ok: false, message: error.message };
+  revalidateVersion(versionId);
+  const reportId = existing?.feedback_report_id as string | null | undefined;
+  if (reportId) {
+    revalidatePath(`/feedback/${reportId}`);
+    revalidatePath("/feedback");
+  }
+  return { ok: true };
+}
+
+/**
+ * Search feedback reports for the link picker. Reuses the existing
+ * `admin_feedback_queue` SECURITY DEFINER RPC (p_search) — no bespoke query —
+ * and trims each row to what the picker renders.
+ */
+export async function searchFeedback(
+  query: string,
+): Promise<ActionResult<FeedbackSearchRow[]>> {
+  await requireAdmin();
+  const q = query.trim();
+  if (q.length < 2) return { ok: true, data: [] };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("admin_feedback_queue", {
+    p_search: q,
+    p_limit: 15,
+    p_offset: 0,
+  });
+  if (error) return { ok: false, message: error.message };
+
+  const rows = (data as Array<Record<string, unknown>> | null) ?? [];
+  return {
+    ok: true,
+    data: rows.map((r) => ({
+      id: r.report_id as string,
+      kind: (r.kind as string) ?? "general",
+      status: (r.status as string) ?? "new",
+      body_preview: (r.body_preview as string) ?? "",
+    })),
+  };
+}

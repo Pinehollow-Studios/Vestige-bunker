@@ -43,6 +43,7 @@ export default async function DashboardLayout({
     usersRes,
     crashesRes,
     announcementsRes,
+    changelogRes,
   ] = await Promise.all([
     supabase.rpc("admin_list_verification_queue"),
     supabase
@@ -81,6 +82,12 @@ export default async function DashboardLayout({
       .eq("is_archived", false)
       .not("published_at", "is", null)
       .lte("published_at", new Date().toISOString()),
+    // Changelog pill — versions still in progress (draft). Same missing-table
+    // resilience as announcements: { count: null } before the migration lands.
+    supabase
+      .from("app_versions")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "draft"),
   ]);
 
   const counts = {
@@ -93,6 +100,7 @@ export default async function DashboardLayout({
     users: usersRes.count ?? 0,
     crashes: crashesRes.count ?? 0,
     announcements: announcementsRes.count ?? 0,
+    changelog: changelogRes.count ?? 0,
   };
 
   return (

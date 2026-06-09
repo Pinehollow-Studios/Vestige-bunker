@@ -13,8 +13,8 @@ import {
   FEEDBACK_AREAS,
   FEEDBACK_KINDS,
   FEEDBACK_PRIORITIES,
+  FEEDBACK_UI_WORK_STAGES,
   FEEDBACK_USER_SEVERITIES,
-  FEEDBACK_WORK_STAGES,
   kindLabel,
   priorityLabel,
   severityLabel,
@@ -153,7 +153,7 @@ export function QueueFilters({
 
       <div className="space-y-3">
         <FilterRow label="Stage">
-          {FEEDBACK_WORK_STAGES.map((stage) => (
+          {FEEDBACK_UI_WORK_STAGES.map((stage) => (
             <FilterChip
               key={stage}
               active={selectedWorkStages.includes(stage)}

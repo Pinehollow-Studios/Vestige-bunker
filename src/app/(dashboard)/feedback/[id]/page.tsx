@@ -9,8 +9,8 @@ import {
   Hash,
   MapPin,
   Repeat,
+  Rocket,
   Smartphone,
-  Tag,
 } from "lucide-react";
 import { SectionHeader } from "@/components/admin/SectionHeader";
 import { createClient } from "@/lib/supabase/server";
@@ -54,6 +54,28 @@ type ThreadResponse = {
   screenshots: FeedbackScreenshot[] | null;
   duplicates: FeedbackDuplicateLink[] | null;
 };
+
+type ShippedVersion = { id: string; version: string; status: string };
+
+/**
+ * Collapse the app_version_changes rows tagged to a report into a deduped list
+ * of versions it shipped in. PostgREST returns the embedded parent as an object
+ * (to-one) but we normalise array-or-object defensively.
+ */
+function dedupeShippedVersions(rows: unknown): ShippedVersion[] {
+  if (!Array.isArray(rows)) return [];
+  const out = new Map<string, ShippedVersion>();
+  for (const row of rows as Array<{ app_versions?: unknown }>) {
+    const av = Array.isArray(row.app_versions) ? row.app_versions[0] : row.app_versions;
+    if (av && typeof av === "object") {
+      const v = av as { id?: string; version?: string; status?: string };
+      if (v.id && v.version) {
+        out.set(v.id, { id: v.id, version: v.version, status: v.status ?? "released" });
+      }
+    }
+  }
+  return Array.from(out.values());
+}
 
 // --------------------------------------------------------------
 // Calm chip helpers (presentation-only, local to the feedback UI)
@@ -136,12 +158,21 @@ export default async function FeedbackThreadPage({
   const admin = await requireAdmin();
   const supabase = await createClient();
 
-  const [{ data, error }, owners] = await Promise.all([
+  const [{ data, error }, owners, shippedRes] = await Promise.all([
     supabase
       .rpc("admin_feedback_thread", { p_report_id: id })
       .single<ThreadResponse>(),
     listAdminOwners(),
+    // Versions this report shipped in (the changelog↔feedback loop). Reads
+    // app_version_changes tagged to this report; a missing table (pre-migration)
+    // returns { data: null } so the chip simply doesn't render.
+    supabase
+      .from("app_version_changes")
+      .select("version_id, app_versions ( id, version, status )")
+      .eq("feedback_report_id", id),
   ]);
+
+  const shippedVersions = dedupeShippedVersions(shippedRes.data);
 
   if (error) {
     return (
@@ -186,7 +217,12 @@ export default async function FeedbackThreadPage({
     <div className="mx-auto max-w-5xl space-y-6">
       <BackLink />
 
-      <ReportHeader report={report} reporter={reporter} owner={owner} />
+      <ReportHeader
+        report={report}
+        reporter={reporter}
+        owner={owner}
+        shippedVersions={shippedVersions}
+      />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
         <div className="min-w-0 space-y-4">
@@ -202,10 +238,10 @@ export default async function FeedbackThreadPage({
             reportId={report.id}
             reporterUserId={report.user_id}
             initialWorkStage={report.work_stage}
+            initialReporterStatus={report.status}
             initialPriority={report.priority}
             initialOwnerUserId={report.owner_user_id}
             initialSeverity={report.severity}
-            initialTags={report.tags ?? []}
             initialDuplicateOf={report.duplicate_of_report_id}
             owners={owners}
             currentAdminId={admin.id}
@@ -234,10 +270,12 @@ function ReportHeader({
   report,
   reporter,
   owner,
+  shippedVersions,
 }: {
   report: FeedbackReport;
   reporter: FeedbackReporter | null;
   owner: FeedbackOwner | null;
+  shippedVersions: ShippedVersion[];
 }) {
   const reporterAvatar = reporter
     ? avatarURL(reporter.id, reporter.avatar_photo_id)
@@ -272,6 +310,16 @@ function ReportHeader({
         >
           {workStageLabel(report.work_stage)}
         </span>
+        {shippedVersions.map((v) => (
+          <Link
+            key={v.id}
+            href={`/changelog/${v.id}`}
+            className={`${CHIP_BASE} ${toneClasses("brand")} inline-flex items-center gap-1 transition-colors hover:bg-brand/10`}
+          >
+            <Rocket aria-hidden className="size-3" />
+            Shipped in v{v.version}
+          </Link>
+        ))}
         {report.priority && (
           <span
             className={`${CHIP_BASE} ${toneClasses(priorityTone(report.priority))}`}
@@ -503,20 +551,6 @@ function SidebarMeta({ report }: { report: FeedbackReport }) {
         <MetaRow icon={Hash} label="Screen">
           {report.screen ?? "—"}
         </MetaRow>
-        {report.tags && report.tags.length > 0 && (
-          <MetaRow icon={Tag} label="Tags">
-            <span className="flex flex-wrap gap-1">
-              {report.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center rounded-full border border-rule/70 px-2 py-0.5 text-[10px] text-ink-2"
-                >
-                  {tag}
-                </span>
-              ))}
-            </span>
-          </MetaRow>
-        )}
         {report.linked_crash_id && (
           <MetaRow icon={Hash} label="Linked crash">
             <span className="font-mono text-[10px] text-ink-3">
