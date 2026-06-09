@@ -288,8 +288,9 @@ export function statusChipClasses(status: FeedbackStatus): string {
  * these four families (brand / amber / alert / neutral). */
 export type FeedbackChipTone = "brand" | "amber" | "alert" | "neutral";
 
-/** Operator-pipeline order — drives the side-panel stage picker + the
- * queue filter. Mirrors the `feedback_work_stage` enum order. */
+/** Full operator-pipeline order — mirrors the `feedback_work_stage` enum.
+ * Kept for label/tone lookups on legacy rows in dropped stages; the UI
+ * surfaces only `FEEDBACK_UI_WORK_STAGES`. */
 export const FEEDBACK_WORK_STAGES: FeedbackWorkStage[] = [
   "new",
   "triaged",
@@ -299,6 +300,27 @@ export const FEEDBACK_WORK_STAGES: FeedbackWorkStage[] = [
   "fixed",
   "released",
   "resolved",
+  "wontFix",
+];
+
+/** The stages the dashboard actually surfaces (2026-06-09 external/internal
+ * split). `inProgress` + `fixed` are the two EXTERNAL stages (notify the
+ * reporter); `new` / `triaged` / `wontFix` are internal-only. The dropped
+ * stages (`backlog` / `needsInfo` / `released` / `resolved`) still render via
+ * the full-list helpers if a legacy row carries one. */
+export const FEEDBACK_UI_WORK_STAGES: FeedbackWorkStage[] = [
+  "new",
+  "triaged",
+  "inProgress",
+  "fixed",
+  "wontFix",
+];
+
+/** Internal-only stages — the operator-side controls that never notify the
+ * reporter or move the reporter-facing status. */
+export const FEEDBACK_INTERNAL_WORK_STAGES: FeedbackWorkStage[] = [
+  "new",
+  "triaged",
   "wontFix",
 ];
 
@@ -340,8 +362,12 @@ export function priorityLabel(priority: FeedbackPriority | null): string {
   }
 }
 
-/** The reporter-facing status this stage maps to. Mirrors the SQL
- * derivation in `set_work_stage` — keep both in sync. */
+/** The reporter-facing status this stage maps to (2026-06-09 split).
+ * Only the two EXTERNAL stages move the reporter status:
+ * `inProgress` ⇒ inProgress, `fixed` ⇒ resolved ("Fixed" on iOS). Every
+ * internal stage leaves the reporter where they were — modelled here as a
+ * no-op derivation (the dashboard reads the live `status` column, not this,
+ * for internal stages). Mirrors the SQL `set_work_stage` — keep in sync. */
 export function workStageDerivedStatus(stage: FeedbackWorkStage): FeedbackStatus {
   switch (stage) {
     case "new":
@@ -351,8 +377,8 @@ export function workStageDerivedStatus(stage: FeedbackWorkStage): FeedbackStatus
     case "needsInfo":
       return "triaged";
     case "inProgress":
-    case "fixed":
       return "inProgress";
+    case "fixed":
     case "released":
     case "resolved":
       return "resolved";
@@ -361,21 +387,39 @@ export function workStageDerivedStatus(stage: FeedbackWorkStage): FeedbackStatus
   }
 }
 
-/** Stages whose derived status is terminal (resolved / wontFix) and so
- * require a resolution note — the note is shown to the reporter. */
-export function workStageNeedsResolutionNote(stage: FeedbackWorkStage): boolean {
-  const derived = workStageDerivedStatus(stage);
-  return derived === "resolved" || derived === "wontFix";
+/** The two external stages — the only ones that notify the reporter. */
+export function workStageIsExternal(stage: FeedbackWorkStage): boolean {
+  return stage === "inProgress" || stage === "fixed";
 }
+
+/** Stages that count as "done" — drives the Active / Done partition on the
+ * queue. Fixed + the legacy resolved/released, plus the silent Won't-fix
+ * close. */
+export function workStageIsDone(stage: FeedbackWorkStage): boolean {
+  return (
+    stage === "fixed" ||
+    stage === "resolved" ||
+    stage === "released" ||
+    stage === "wontFix"
+  );
+}
+
+/** Work stages that are NOT done — the Active set. */
+export const FEEDBACK_ACTIVE_WORK_STAGES: FeedbackWorkStage[] =
+  FEEDBACK_WORK_STAGES.filter((s) => !workStageIsDone(s));
+
+/** Work stages filed under Done. */
+export const FEEDBACK_DONE_WORK_STAGES: FeedbackWorkStage[] =
+  FEEDBACK_WORK_STAGES.filter((s) => workStageIsDone(s));
 
 export function workStageTone(stage: FeedbackWorkStage): FeedbackChipTone {
   switch (stage) {
     case "new":
       return "brand";
     case "inProgress":
-    case "fixed":
     case "needsInfo":
       return "amber";
+    case "fixed":
     case "released":
     case "resolved":
       return "brand";

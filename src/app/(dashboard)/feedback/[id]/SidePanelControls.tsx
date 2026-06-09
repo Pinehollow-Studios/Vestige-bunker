@@ -2,20 +2,20 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
+import { Loader2, Send, Wrench } from "lucide-react";
 import type { AdminOption } from "@/lib/feedback/owners";
 import {
   type FeedbackPriority,
   type FeedbackSeverity,
+  type FeedbackStatus,
   type FeedbackWorkStage,
+  FEEDBACK_INTERNAL_WORK_STAGES,
   FEEDBACK_PRIORITIES,
-  FEEDBACK_WORK_STAGES,
   priorityLabel,
   priorityTone,
   severityLabel,
   statusLabel,
   workStageLabel,
-  workStageDerivedStatus,
-  workStageNeedsResolutionNote,
   workStageTone,
 } from "@/lib/feedback/types";
 import {
@@ -25,7 +25,6 @@ import {
   setOwner,
   setPriority,
   setSeverity,
-  setTags,
   setWorkStage,
   unblockReporter,
 } from "../actions";
@@ -68,19 +67,24 @@ function pillToneClasses(
 }
 
 /**
- * Right-side panel that bundles every admin control on a single
- * report (slice 4). Status, severity, tags, duplicate-of,
- * block-reporter, delete. Each control owns its own pending state
- * and toasts on success / failure.
+ * Right-side panel bundling every admin control on a single report.
+ *
+ * 2026-06-09 external/internal split: the controls are now grouped so the
+ * line between what the reporter sees and what stays internal is obvious.
+ *   • "Update the reporter" — the only two actions that notify (In progress
+ *     / Fixed), each with an optional attached message.
+ *   • "Internal" — stage (New / Triaged / Won't fix), priority, owner,
+ *     severity, duplicate-of. None of these reach the reporter.
+ *   • "Danger zone" — block reporter, delete.
  */
 export function SidePanelControls({
   reportId,
   reporterUserId,
   initialWorkStage,
+  initialReporterStatus,
   initialPriority,
   initialOwnerUserId,
   initialSeverity,
-  initialTags,
   initialDuplicateOf,
   owners,
   currentAdminId,
@@ -89,46 +93,49 @@ export function SidePanelControls({
   reportId: string;
   reporterUserId: string | null;
   initialWorkStage: FeedbackWorkStage;
+  initialReporterStatus: FeedbackStatus;
   initialPriority: FeedbackPriority | null;
   initialOwnerUserId: string | null;
   initialSeverity: FeedbackSeverity | null;
-  initialTags: string[];
   initialDuplicateOf: string | null;
   owners: AdminOption[];
   currentAdminId: string;
   isSuperAdmin: boolean;
 }) {
   return (
-    <div className="space-y-4 rounded-xl glass-panel p-4">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3">
-        Triage
-      </p>
-      <StageControl reportId={reportId} initial={initialWorkStage} />
-      <Divider />
-      <PriorityControl reportId={reportId} initial={initialPriority} />
-      <Divider />
-      <OwnerControl
+    <div className="space-y-5 rounded-xl glass-panel p-4">
+      <ExternalControls
         reportId={reportId}
-        initial={initialOwnerUserId}
-        owners={owners}
-        currentAdminId={currentAdminId}
+        currentStage={initialWorkStage}
+        reporterStatus={initialReporterStatus}
       />
       <Divider />
-      <SeverityControl reportId={reportId} initial={initialSeverity} />
-      <Divider />
-      <TagsControl reportId={reportId} initial={initialTags} />
-      <Divider />
-      <DuplicateOfControl reportId={reportId} initial={initialDuplicateOf} />
-      {reporterUserId && (
+      <section className="space-y-4">
+        <div>
+          <FieldLabel>Internal</FieldLabel>
+          <p className="mt-1 text-[10px] text-ink-3">
+            Operator-only. None of this reaches the reporter.
+          </p>
+        </div>
+        <InternalStageControl reportId={reportId} initial={initialWorkStage} />
+        <PriorityControl reportId={reportId} initial={initialPriority} />
+        <OwnerControl
+          reportId={reportId}
+          initial={initialOwnerUserId}
+          owners={owners}
+          currentAdminId={currentAdminId}
+        />
+        <SeverityControl reportId={reportId} initial={initialSeverity} />
+        <DuplicateOfControl reportId={reportId} initial={initialDuplicateOf} />
+      </section>
+      {(reporterUserId || isSuperAdmin) && (
         <>
           <Divider />
-          <BlockReporterControl userId={reporterUserId} />
-        </>
-      )}
-      {isSuperAdmin && (
-        <>
-          <Divider />
-          <DeleteReportControl reportId={reportId} />
+          <section className="space-y-4">
+            <FieldLabel>Danger zone</FieldLabel>
+            {reporterUserId && <BlockReporterControl userId={reporterUserId} />}
+            {isSuperAdmin && <DeleteReportControl reportId={reportId} />}
+          </section>
         </>
       )}
     </div>
@@ -148,12 +155,179 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 }
 
 // --------------------------------------------------------------
-// Work stage — the operator pipeline. Drives the reporter-facing
-// status under the hood (see set_work_stage). A caption shows what
-// the reporter will see.
+// External — the two reporter-facing actions. Each opens an inline
+// composer (optional message + send). In progress posts the message as
+// a reply; Fixed stores it as the resolution note. Both notify the
+// reporter; nothing else does.
 // --------------------------------------------------------------
 
-function StageControl({
+type ExternalStage = "inProgress" | "fixed";
+
+function ExternalControls({
+  reportId,
+  currentStage,
+  reporterStatus,
+}: {
+  reportId: string;
+  currentStage: FeedbackWorkStage;
+  reporterStatus: FeedbackStatus;
+}) {
+  const [pending, startTransition] = useTransition();
+  const [open, setOpen] = useState<ExternalStage | null>(null);
+  const [note, setNote] = useState("");
+
+  const fire = (stage: ExternalStage) => {
+    startTransition(async () => {
+      const result = await setWorkStage(reportId, stage, note.trim() || null);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(
+        stage === "fixed"
+          ? "Marked fixed — reporter notified"
+          : "Marked in progress — reporter notified",
+      );
+      setOpen(null);
+      setNote("");
+    });
+  };
+
+  const toggle = (stage: ExternalStage) => {
+    setNote("");
+    setOpen((cur) => (cur === stage ? null : stage));
+  };
+
+  return (
+    <section className="space-y-3">
+      <div>
+        <FieldLabel>Update the reporter</FieldLabel>
+        <p className="mt-1 text-[10px] text-ink-3">
+          Sends a notification. The only two states the reporter ever sees.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <ExternalButton
+          icon={<Wrench className="size-3.5" />}
+          label="In progress"
+          tone="amber"
+          active={currentStage === "inProgress"}
+          disabled={pending}
+          onClick={() => toggle("inProgress")}
+        />
+        <ExternalButton
+          icon={<Send className="size-3.5" />}
+          label="Fixed"
+          tone="brand"
+          active={currentStage === "fixed"}
+          disabled={pending}
+          onClick={() => toggle("fixed")}
+        />
+      </div>
+
+      {open && (
+        <div className="space-y-2 rounded-lg border border-rule/70 bg-paper-sunken/40 p-3">
+          <FieldLabel>
+            {open === "fixed"
+              ? "Resolution note — optional, shown to the reporter"
+              : "Message — optional, shown to the reporter"}
+          </FieldLabel>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={3}
+            autoFocus
+            placeholder={
+              open === "fixed"
+                ? "e.g. Fixed in 0.1.3 — please update the app."
+                : "e.g. We've reproduced this and are on it."
+            }
+            className="block w-full resize-y rounded-lg border border-rule/70 bg-paper-raised/60 p-2 text-xs text-ink placeholder:text-ink-3 focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand/30"
+          />
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] text-ink-3">
+              Leave blank to update without a message.
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setOpen(null)}
+                disabled={pending}
+                className="rounded-md border border-rule/70 px-2.5 py-1 text-[11px] font-semibold text-ink-2 transition-colors hover:text-ink disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => fire(open)}
+                disabled={pending}
+                className="inline-flex items-center gap-1.5 rounded-md bg-brand px-2.5 py-1 text-[11px] font-semibold text-brand-fg transition-opacity disabled:opacity-60"
+              >
+                {pending && <Loader2 className="size-3 animate-spin" />}
+                {sendLabel(open, note, pending)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <p className="text-[10px] text-ink-3">
+        Reporter sees:{" "}
+        <span className="text-ink-2">{statusLabel(reporterStatus)}</span>
+      </p>
+    </section>
+  );
+}
+
+function sendLabel(stage: ExternalStage, note: string, pending: boolean): string {
+  if (pending) return "Sending…";
+  const verb = stage === "fixed" ? "mark fixed" : "mark in progress";
+  return note.trim() ? `Send & ${verb}` : `Confirm — ${verb}`;
+}
+
+function ExternalButton({
+  icon,
+  label,
+  tone,
+  active,
+  disabled,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  tone: "amber" | "brand";
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  const activeClasses =
+    tone === "brand"
+      ? "border-brand bg-brand/15 text-brand"
+      : "border-amber bg-amber/15 text-amber";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+        active
+          ? activeClasses
+          : "border-rule/70 text-ink-2 hover:border-brand/40 hover:text-ink"
+      }`}
+    >
+      {icon}
+      {label}
+      {active && <span className="text-[9px] uppercase tracking-wider">· now</span>}
+    </button>
+  );
+}
+
+// --------------------------------------------------------------
+// Internal stage — New / Triaged / Won't fix. Pure operator state:
+// never notifies, never moves the reporter-facing status.
+// --------------------------------------------------------------
+
+function InternalStageControl({
   reportId,
   initial,
 }: {
@@ -161,85 +335,49 @@ function StageControl({
   initial: FeedbackWorkStage;
 }) {
   const [pending, startTransition] = useTransition();
-  const [showNoteFor, setShowNoteFor] = useState<FeedbackWorkStage | null>(
-    null,
-  );
-  const [resolutionNote, setResolutionNote] = useState("");
-
-  const fire = (next: FeedbackWorkStage, note: string | null) => {
+  const fire = (stage: FeedbackWorkStage) => {
     startTransition(async () => {
-      const result = await setWorkStage(reportId, next, note);
+      const result = await setWorkStage(reportId, stage, null);
       if ("error" in result) {
         toast.error(result.error);
         return;
       }
-      toast.success(`Stage → ${workStageLabel(next)}`);
-      setShowNoteFor(null);
-      setResolutionNote("");
+      toast.success(`Stage → ${workStageLabel(stage)}`);
     });
   };
+
+  // The two external stages can also be the current stage; show them as a
+  // read-only marker so the operator isn't confused about where it sits.
+  const externalActive =
+    initial === "inProgress" || initial === "fixed" ? initial : null;
 
   return (
     <div className="space-y-2">
       <FieldLabel>Stage</FieldLabel>
       <div className="flex flex-wrap gap-1.5">
-        {FEEDBACK_WORK_STAGES.map((stage) => {
+        {FEEDBACK_INTERNAL_WORK_STAGES.map((stage) => {
           const isActive = stage === initial;
-          const needsNote = workStageNeedsResolutionNote(stage);
           return (
             <button
               key={stage}
               type="button"
               disabled={pending || isActive}
-              onClick={() => {
-                if (needsNote) {
-                  setShowNoteFor(stage);
-                } else {
-                  fire(stage, null);
-                }
-              }}
+              onClick={() => fire(stage)}
               className={`${PILL_BASE} ${pillToneClasses(workStageTone(stage), isActive)}`}
             >
               {workStageLabel(stage)}
             </button>
           );
         })}
+        {externalActive && (
+          <span
+            className={`${PILL_BASE} ${pillToneClasses(workStageTone(externalActive), true)} cursor-default opacity-90`}
+            title="Set from “Update the reporter” above"
+          >
+            {workStageLabel(externalActive)}
+          </span>
+        )}
       </div>
-      <p className="text-[10px] text-ink-3">
-        Reporter sees:{" "}
-        <span className="text-ink-2">
-          {statusLabel(workStageDerivedStatus(initial))}
-        </span>
-      </p>
-      {showNoteFor && (
-        <div className="mt-2 space-y-2 rounded-lg border border-rule/70 bg-paper-sunken/40 p-3">
-          <FieldLabel>Resolution note — shown to the reporter</FieldLabel>
-          <textarea
-            value={resolutionNote}
-            onChange={(e) => setResolutionNote(e.target.value)}
-            rows={3}
-            placeholder="e.g. Fixed in 0.1.2 — please update the app."
-            className="block w-full resize-y rounded-lg border border-rule/70 bg-paper-raised/60 p-2 text-xs text-ink placeholder:text-ink-3 focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand/30"
-          />
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setShowNoteFor(null)}
-              className="rounded-md border border-rule/70 px-2.5 py-1 text-[11px] font-semibold text-ink-2 transition-colors hover:text-ink"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={pending || !resolutionNote.trim()}
-              onClick={() => fire(showNoteFor, resolutionNote)}
-              className="rounded-md bg-brand px-2.5 py-1 text-[11px] font-semibold text-brand-fg transition-opacity disabled:opacity-60"
-            >
-              {pending ? "Saving…" : `Mark ${workStageLabel(showNoteFor)}`}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -411,85 +549,6 @@ function SeverityControl({
 }
 
 // --------------------------------------------------------------
-// Tags
-// --------------------------------------------------------------
-
-function TagsControl({
-  reportId,
-  initial,
-}: {
-  reportId: string;
-  initial: string[];
-}) {
-  const [tags, setTagsLocal] = useState<string[]>(initial);
-  const [draft, setDraft] = useState("");
-  const [pending, startTransition] = useTransition();
-
-  const persist = (next: string[]) => {
-    startTransition(async () => {
-      const result = await setTags(reportId, next);
-      if ("error" in result) {
-        toast.error(result.error);
-        setTagsLocal(initial);
-        return;
-      }
-      toast.success("Tags saved");
-    });
-  };
-
-  const addTag = (raw: string) => {
-    const cleaned = raw.replace(/^#+/, "").toLowerCase().trim();
-    if (!cleaned) return;
-    if (tags.includes(cleaned)) return;
-    const next = [...tags, cleaned];
-    setTagsLocal(next);
-    setDraft("");
-    persist(next);
-  };
-
-  const removeTag = (tag: string) => {
-    const next = tags.filter((t) => t !== tag);
-    setTagsLocal(next);
-    persist(next);
-  };
-
-  return (
-    <div className="space-y-2">
-      <FieldLabel>Tags</FieldLabel>
-      <div className="flex flex-wrap gap-1.5">
-        {tags.map((tag) => (
-          <button
-            key={tag}
-            type="button"
-            disabled={pending}
-            onClick={() => removeTag(tag)}
-            className="inline-flex items-center gap-1 rounded-full border border-rule/70 px-2 py-0.5 text-[11px] text-ink-2 transition-colors hover:border-alert/40 hover:text-alert"
-          >
-            {tag}
-            <span aria-hidden className="text-ink-3">
-              ×
-            </span>
-          </button>
-        ))}
-        <input
-          type="text"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              addTag(draft);
-            }
-          }}
-          placeholder="add tag…"
-          className="min-w-24 rounded-full border border-dashed border-rule/70 bg-transparent px-2 py-0.5 text-[11px] text-ink-2 placeholder:text-ink-3 focus:border-brand focus:outline-none"
-        />
-      </div>
-    </div>
-  );
-}
-
-// --------------------------------------------------------------
 // Duplicate-of
 // --------------------------------------------------------------
 
@@ -623,7 +682,6 @@ function DeleteReportControl({ reportId }: { reportId: string }) {
   };
   return (
     <div className="space-y-2">
-      <FieldLabel>Danger zone</FieldLabel>
       <button
         type="button"
         disabled={pending}

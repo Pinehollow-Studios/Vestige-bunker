@@ -5,6 +5,120 @@
 
 ---
 
+## 2026-06-09 — Feedback: external/internal split + attachable notifications + Done area
+
+The work-tracking layer shipped on 2026-06-08 gave operators a finer pipeline,
+but the line between *what we track* and *what the reporter is told* was fuzzy:
+nine equal-weight stage pills, admin severity + freeform tags + reporter impact
+all competing on the row, and several transitions (`Acknowledged`, `Closed`,
+every status change) firing reporter notifications. This slice draws a hard
+line and trims the noise.
+
+- **Exactly two external indicators.** Only **In progress** and **Fixed** ever
+  reach the reporter — they're the only stages that touch the reporter-facing
+  `status` and the only ones that notify. Everything else (New / Triaged /
+  Won't fix, plus the legacy `backlog`/`needsInfo`/`released`/`resolved`
+  values) is internal: it moves `work_stage` only, never changes `status`,
+  never notifies. The reporter's experience is now exactly
+  **Sent → Working on it → Fixed**. Triaged and Won't fix are invisible to
+  them; **Won't fix is a silent internal close** that files the report into the
+  dashboard's Done area.
+
+- **Attachable text on either action.** Clicking *In progress* / *Fixed* in the
+  side panel opens an inline composer (optional message + send). The note is
+  optional. On the In-progress path it's recorded as an admin **reply** (renders
+  in the iOS thread + the "LATEST UPDATE" preview); on the Fixed path it's the
+  **`resolution_note`** (the iOS "FIXED" card). The note was *required* on
+  resolve before — it's optional now.
+
+- **One SQL function, no DDL, no iOS change.** iOS migration
+  `20260609120000_feedback_external_internal_split.sql` rewrites `set_work_stage`
+  (same signature) to be the single authority for the pipeline. It stops
+  delegating to `transition_status` (left intact for `bulk_resolve_reports`),
+  remaps `fixed ⇒ resolved` (was `inProgress`), and owns notification policy:
+  one notification per surfaceable transition, routed through the
+  preference-aware `notify_user(feedback)`. No enum/column changes — it reuses
+  existing `work_stage` values, the `resolution_note` column, and the reply
+  mechanism. iOS already labels `inProgress` "Working on it" / `resolved`
+  "Fixed" and renders reply bodies + the resolution note, so no Swift change.
+  Ships via the iOS migration deploy flow (not applied from here);
+  coordinated-deploy — the dashboard's `fixed⇒resolved` derivation needs the
+  migration present on whichever project it reads/writes.
+
+- **Done area.** `/feedback` gains an **Active / Done / All** segmented control
+  (a `view` param mapping to a `work_stage` partition). Active (default) hides
+  Fixed + Won't fix; Done is the kept record of completed work. Summary strip
+  reworked to active / fixed / closed counts.
+
+- **Rationalized internal indicators.** Side panel regrouped into "Update the
+  reporter (sends a notification)" (the two external buttons), "Internal"
+  (Stage = New/Triaged/Won't fix, Priority, Owner, Severity, Duplicate-of), and
+  "Danger zone". **Freeform tags removed** from the workflow (the `setTags`
+  action + the detail-page Tags row + the side-panel control). Queue rows
+  calmed to Stage + Priority + Severity (dropped the reporter-impact chip).
+  Stage filter limited to the five surfaced stages. `transitionStatus` (dead in
+  the UI since the 06-08 slice) removed.
+
+- **Verification.** `tsc` / `eslint` / `next build` green.
+
+## 2026-06-09 — Version changelog (`/changelog`) wired into feedback
+
+What shipped in each build of the app lived only in git + the iOS
+`CHANGELOG.md`; Jack had no operator-facing view of it, and there was nothing
+tying "we fixed that" to the report that surfaced it. New `/changelog` surface:
+an authored, per-version release log whose change lines tag feedback reports, so
+a release shows which reported bugs it tackled and a feedback thread shows the
+version it shipped in.
+
+Decisions (locked with Tom): **internal only** — no iOS consumer, no user-facing
+RPC, not in the dev→prod sync engine (Announcements already covers user-facing
+"what's new"); **categorized change lines** (Added / Changed / Improved / Fixed /
+Removed), each optionally linking one report; **link-only loop** — tagging records
+the association + shows a "Shipped in v0.1.2" badge, it does *not* move the
+report's `work_stage` (no reporter notification fires on link).
+
+- **Schema (prod).** iOS migration `20260609100000_app_version_changelog.sql` adds
+  two admin-only tables — `app_versions` (semver split into `major/minor/patch`
+  for correct ordering + a `draft`/`released` lifecycle; "current" is derived as
+  the highest released, never stored) and `app_version_changes` (ordered,
+  kind-tagged lines; `feedback_report_id` FK `on delete set null` is the loop;
+  indexed for the reverse "shipped in vX" lookup). RLS `is_admin()` on both, CRUD
+  direct via RLS (no RPCs — matches Announcements), shared `set_updated_at()`
+  trigger. Seeds the three shipped versions (`0.1` / `0.1.1` / `0.1.2`).
+
+- **Targets prod, not dev.** The dashboard's default + primary target is the live
+  prod project (`env.ts`: reads + writes prod; `createClient` is the one
+  prod-bound session client — `createDevClient` is a deprecated alias). So the
+  changelog + its links are prod rows referencing prod feedback reports. Deploy
+  is via the iOS-repo `prod-deploy` action (`supabase db push` against
+  `vestige-ios-prod`); the migration isn't on `prod-migration-hold.txt`, so it
+  applies on the next prod push. Until then every read degrades to a graceful
+  "not configured" state (mirrors Announcements' `isMissingRelation`).
+
+- **Dashboard surface.** `/changelog` lists versions newest-first with a
+  prominent current-version banner; `/changelog/[id]` is the editor — version
+  meta + draft↔released toggle + editable release date, plus a change-line
+  manager grouped by kind with inline edit / delete / add. The report picker
+  reuses the existing `admin_feedback_queue` RPC (`p_search`); linking shows the
+  report inline with a deep link to its thread.
+
+- **Feedback loop (both directions).** The thread page (`/feedback/[id]`) gains a
+  brand "Shipped in v0.1.2" chip linking back to the version; the queue page
+  overlays a "Shipped in vX" marker on shipped rows via one batch query keyed by
+  the visible report ids.
+
+- **Nav + overview.** Sidebar "Changelog" entry (Rocket icon, badge = in-progress
+  draft count); a Changelog card on the overview Editorial row showing the
+  current version + recent releases. Both counts use the same missing-table
+  resilience as every other pill.
+
+- **No sync entity.** Internal admin content authored directly in prod — nothing
+  for the editorial dev→prod mirror to carry.
+
+Verified `tsc` / `eslint` / `next build` clean (`/changelog` + `/changelog/[id]`
+routes present). Migration deploy to prod is the one remaining step, handed to
+Tom via the `prod-deploy` action.
+
 ## 2026-06-08 — Feedback work-tracking layer (stage + priority + owner)
 
 The feedback queue (`/feedback`) already shipped read + triage. What was

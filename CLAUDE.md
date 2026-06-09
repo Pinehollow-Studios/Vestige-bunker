@@ -228,3 +228,39 @@ canonical write-up lives on disk.
   migration applied to dev only (prod via normal promotion). Verified
   `tsc`/`eslint`/`build` + a 14-assertion live smoke test. Long-form in
   `CHANGELOG.md`.
+- **2026-06-09** — Version changelog (`/changelog`): operator-facing,
+  internal-only release log wired into feedback. iOS migration
+  `20260609100000_app_version_changelog.sql` adds two admin-only tables —
+  `app_versions` (semver split into major/minor/patch for ordering;
+  draft/released lifecycle; "current" = highest released, derived) and
+  `app_version_changes` (ordered, kind-tagged lines — added/changed/improved/
+  fixed/removed — each optionally linking one `feedback_reports` row). RLS
+  `is_admin()`, CRUD direct-via-RLS (no RPCs), seeds `0.1`/`0.1.1`/`0.1.2`.
+  Dashboard: `/changelog` list + current-version banner, `/changelog/[id]`
+  editor (meta + release toggle/date + grouped change-line manager + feedback
+  link picker reusing `admin_feedback_queue`). Link-only loop — a "Shipped in
+  vX" chip on the feedback thread + a queue marker; no `work_stage` change on
+  link. Sidebar entry + overview card. **Targets prod** (the dashboard's
+  default — `createClient` reads+writes prod; the 2026-06-07 "dev-only
+  workshop" wording is stale); migration ships to prod via the iOS `prod-deploy`
+  action (not on the hold-list), reads degrade to "not configured" until then.
+  No sync entity. Verified `tsc`/`eslint`/`build`. Long-form in `CHANGELOG.md`.
+- **2026-06-09** — Feedback external/internal split: a hard line between
+  dashboard-only state and reporter notifications. Only **In progress** +
+  **Fixed** reach the reporter (the two surfaceable states) — each takes an
+  optional attached note (In progress → admin reply; Fixed → resolution note,
+  now optional). Every other stage (New / Triaged / Won't fix + legacy
+  backlog/needsInfo/released/resolved) is internal: moves `work_stage` only,
+  never touches reporter `status`, never notifies; the reporter sees only
+  Sent → Working on it → Fixed. Won't fix is a silent internal close. iOS
+  migration `20260609120000_feedback_external_internal_split.sql` rewrites
+  `set_work_stage` (single authority; stops delegating to `transition_status`,
+  left intact for `bulk_resolve`; `fixed⇒resolved`; one notification via the
+  preference-aware `notify_user(feedback)`) — no DDL, no iOS change (iOS already
+  labels `inProgress`/`resolved` "Working on it"/"Fixed" and renders reply
+  bodies + the resolution note). Dashboard: `/feedback` gains Active/Done/All
+  tabs (Fixed + Won't fix file into Done); side panel regrouped into "Update the
+  reporter" / "Internal" / "Danger zone"; freeform tags removed; rows calmed to
+  Stage + Priority + Severity; dead `transitionStatus` action removed. Ships via
+  the iOS migration deploy flow; not applied here. Verified `tsc`/`eslint`/
+  `build`. Long-form in `CHANGELOG.md`.
