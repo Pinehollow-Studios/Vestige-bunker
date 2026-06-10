@@ -325,3 +325,17 @@ canonical write-up lives on disk.
   a summary row + events-per-day `AreaChart` (`rollupEventsPerDay`). Moved the
   Analytics sidebar entry from the collapsed "Advanced" group into the everyday
   nav (under Overview) so it's one click for devs. Verified `tsc`/`eslint`/`build`.
+- **2026-06-10** — Display font swap: **Fraunces → Manrope**, every surface.
+  Tom flagged the Fraunces display serif (dashboard stat numerals + iOS
+  announcement titles/hero numerals) as reading "awful / off"; picked Manrope
+  (OFL geometric sans) from a rendered DM Sans / Space Grotesk / Manrope
+  comparison, to apply with no misses across admin, iOS, and marketing. Admin +
+  marketing: `next/font` `Fraunces`→`Manrope` on the display variable (+ sans
+  fallback stack on marketing); only the display serif changed (Inter / DM Sans
+  untouched). iOS: 3 static Manrope cuts instanced from the variable font
+  replace the 5 Fraunces `.ttf`, `Theme.FontName.serif*` + boot assertion +
+  `project.yml` `UIAppFonts` repointed, `xcodegen` regenerated, comments swept;
+  no italic cut so the `editorial` role synth-obliques. Verified
+  `tsc`/`eslint`/`build` (web) + iOS Debug build `BUILD SUCCEEDED` bundling
+  Manrope, no Fraunces; **iOS not sim-confirmed** (WeatherKit launch denial) —
+  Tom-action to eyeball. Long-form in `CHANGELOG.md` + iOS `CHANGELOG.md`.

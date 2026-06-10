@@ -16,9 +16,9 @@ export type Stat = {
  * `null` values render as an em-dash so unbuilt sections fit the
  * grid without making the dashboard feel half-finished.
  *
- * Each tile uses the brand display font for the numeral and the
- * editorial serif for the label so the dashboard reads like the
- * almanac it sits next to.
+ * Each tile uses the brand display font (Manrope) for the numeral
+ * and an uppercase label so the dashboard reads clean and modern,
+ * matching the iOS app.
  */
 export function StatsStrip({ stats }: { stats: Stat[] }) {
   return (
@@ -39,7 +39,7 @@ export function StatsStrip({ stats }: { stats: Stat[] }) {
             <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-3">
               {stat.label}
             </span>
-            {/* Fraunces numeral that counts up — mirrors the app's HeroNumeral. */}
+            {/* Manrope numeral that counts up — mirrors the app's HeroNumeral. */}
             <CountUp
               value={isNull ? null : stat.value}
               className={cn(

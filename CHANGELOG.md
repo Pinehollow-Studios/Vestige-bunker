@@ -5,6 +5,62 @@
 
 ---
 
+## 2026-06-10 — Display font swap: Fraunces → Manrope (all surfaces)
+
+Tom flagged the primary header/display font — the Fraunces serif used for
+the dashboard stat numerals (TOTAL USERS / ROUNDS LOGGED / COURSES IN
+CATALOGUE / ACCEPTED FRIENDSHIPS) and, app-wide, the iOS announcement
+titles + hero numerals — as reading "awful / off", and asked for a modern
+sleek sans in its place. The font he liked on the `/announcements`
+live-preview card turned out to be DM Sans (`font-heading`, not the
+"serif title" its stale comment claimed). From a rendered comparison of
+DM Sans / Space Grotesk / Manrope he picked **Manrope** (OFL geometric
+sans), to apply **everywhere with no misses**: admin dashboard, iOS app,
+and the marketing site.
+
+**Admin (this repo).** `layout.tsx` — the `next/font/google` import swapped
+`Fraunces` → `Manrope` on the `--font-display` variable (weights
+400/500/600/700; the `font-display` Tailwind utility + `.display-serif`
+class flow through unchanged, so the stat numerals and every display-font
+callsite repaint with no per-component edits). Updated the `StatsStrip`
+doc + inline comments that described the numeral as Fraunces/"editorial
+serif". Inter (body) and DM Sans (`--font-heading` / `--font-hero`) are
+untouched — only the offending display serif changed.
+
+**Marketing (`vestige-marketing`).** `layout.tsx` — same `next/font` swap on
+`--font-display-face`; `globals.css` `--font-display` fallback stack
+changed from a serif ladder (`"New York", ui-serif, Georgia, serif`) to a
+sans one (`-apple-system, "SF Pro", system-ui, sans-serif`); stale
+"Source Serif 4 / Fraunces" header comments corrected. Already upright-only,
+so no italic concern.
+
+**iOS (`Vestige-ios`).** The whole display ladder routes through
+`Theme.FontName.serif*`, so the swap is three PostScript constants +
+assets: instanced 3 static Manrope cuts (`Manrope-Regular/-Medium/-SemiBold`,
+wght 400/500/600) from the upstream variable font with `fontTools`, name
+tables rewritten so family = `Manrope` + distinct subfamily + PostScript
+names; replaced the 5 `Fraunces-*.ttf` (Manrope ships no italic, so the
+`editorial` role's `.italic()` now synthesises an oblique on the upright
+cut); `Theme.FontName.serif/serifMedium/serifSemibold` → `Manrope-*`;
+`VestigeApp.assertFontsRegistered` boot family `["Fraunces"]` → `["Manrope"]`;
+`project.yml` `UIAppFonts` swapped (5 Fraunces → 3 Manrope) + `xcodegen
+generate` regenerated `Info.plist` + `pbxproj`; added `Manrope-OFL.txt`,
+removed `Fraunces-OFL.txt`; swept descriptive Fraunces comments → Manrope
+across 13 Swift files + `docs/announcements-concept.md`. Long-form in the
+iOS `CHANGELOG.md` 2026-06-10 entry.
+
+**Verification.** Admin + marketing: `tsc` / `eslint` / `next build` all
+green. iOS: `xcodegen generate` clean; Debug build `BUILD SUCCEEDED`
+(in-build SwiftLint green); built `Vestige.app` confirmed to bundle the 3
+Manrope `.ttf` + no Fraunces, and its embedded `Info.plist` `UIAppFonts`
+lists the three Manrope files. **iOS not visually confirmed in-simulator**
+(same WeatherKit-entitlement SpringBoard launch denial as prior slices) —
+Tom-action: run from Xcode and confirm the splash wordmark, headlines,
+announcement titles, and hero numerals render Manrope (not a system-sans
+fallback) in light + dark + xxxLarge; if the editorial faux-oblique reads
+off, dropping `.italic()` is a one-line follow-up. No schema/migration; no
+git mutation.
+
 ## 2026-06-10 — Analytics: B2B + Events readability pass; nav promoted
 
 Extends the overview redesign to the other two tabs, and makes the surface
