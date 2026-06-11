@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Camera, X } from "lucide-react";
 import type { FeedbackScreenshot } from "@/lib/feedback/types";
 
@@ -84,7 +85,14 @@ export function Screenshots({ screenshots, signedURLs }: Props) {
 }
 
 function Lightbox({ url, onClose }: { url: string; onClose: () => void }) {
-  return (
+  if (typeof document === "undefined") return null;
+
+  // Portal to <body> so the fixed overlay escapes the dashboard's
+  // `z-10` content column (which establishes a stacking context).
+  // Without this the lightbox renders *beneath* the `z-30` fixed
+  // sidebar — its left portion lands behind the sidebar and can't
+  // be clicked, no matter how high this `z-50` is set.
+  return createPortal(
     <div
       onClick={onClose}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-6"
@@ -104,6 +112,7 @@ function Lightbox({ url, onClose }: { url: string; onClose: () => void }) {
         className="max-h-full max-w-full rounded-lg object-contain"
         onClick={(e) => e.stopPropagation()}
       />
-    </div>
+    </div>,
+    document.body,
   );
 }

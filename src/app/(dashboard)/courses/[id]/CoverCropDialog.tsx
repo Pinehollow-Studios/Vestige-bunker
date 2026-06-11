@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { clampOffset, fillScale } from "@/lib/cropClamp";
 
@@ -142,9 +143,14 @@ export function CoverCropDialog({ file, onClose, onConfirm }: Props) {
     }
   }
 
-  if (!file) return null;
+  if (!file || typeof document === "undefined") return null;
 
-  return (
+  // Portal to <body> so the fixed overlay escapes the dashboard's
+  // `z-10` content column (which establishes a stacking context).
+  // Without this the modal renders *beneath* the `z-30` fixed
+  // sidebar — its left controls land behind the sidebar and can't
+  // be clicked, no matter how high this `z-50` is set.
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -241,7 +247,8 @@ export function CoverCropDialog({ file, onClose, onConfirm }: Props) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
