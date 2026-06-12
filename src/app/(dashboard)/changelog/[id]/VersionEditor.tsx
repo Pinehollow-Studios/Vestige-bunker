@@ -30,6 +30,7 @@ import {
   type LinkedFeedback,
 } from "../types";
 import { FeedbackLinkPicker } from "./FeedbackLinkPicker";
+import { ReleaseDialog } from "./ReleaseDialog";
 
 function toneClasses(tone: ChipTone): string {
   switch (tone) {
@@ -181,6 +182,7 @@ function MetaCard({
   const [summary, setSummary] = useState(version.summary ?? "");
   const [status, setStatus] = useState(version.status);
   const [releasedAt, setReleasedAtState] = useState(version.released_at);
+  const [releaseDialogOpen, setReleaseDialogOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const dirty =
@@ -200,18 +202,33 @@ function MetaCard({
     });
   }
 
+  // Releasing (draft → released) routes through the confirmation dialog so the
+  // operator can message every linked reporter as the fix ships. Reverting
+  // (released → draft) is a plain toggle — it never un-resolves a report.
   function toggleReleased(next: boolean) {
-    setStatus(next ? "released" : "draft");
-    startTransition(async () => {
-      const res = await setReleased(version.id, next);
-      if (!res.ok) {
-        toast.error(res.message);
-        setStatus(next ? "draft" : "released");
+    if (next) {
+      if (status === "released") return;
+      if (!isSuperAdmin) {
+        toast.error("Releasing a version requires super_admin.");
         return;
       }
-      // Releasing stamps a date server-side when none is set — reflect it.
-      if (next && !releasedAt) setReleasedAtState(new Date().toISOString());
+      setReleaseDialogOpen(true);
+      return;
+    }
+    setStatus("draft");
+    startTransition(async () => {
+      const res = await setReleased(version.id, false);
+      if (!res.ok) {
+        toast.error(res.message);
+        setStatus("released");
+      }
     });
+  }
+
+  function handleReleased() {
+    setStatus("released");
+    if (!releasedAt) setReleasedAtState(new Date().toISOString());
+    setReleaseDialogOpen(false);
   }
 
   function changeReleasedAt(value: string) {
@@ -234,6 +251,14 @@ function MetaCard({
 
   return (
     <section className="space-y-4 rounded-2xl glass-panel p-5">
+      {releaseDialogOpen && (
+        <ReleaseDialog
+          versionId={version.id}
+          version={version.version}
+          onReleased={handleReleased}
+          onClose={() => setReleaseDialogOpen(false)}
+        />
+      )}
       <div className="grid gap-4 sm:grid-cols-[140px_1fr]">
         <Field label="Version">
           <Input

@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   ChevronRight,
+  Clock,
   Crown,
   Gauge,
   Hash,
@@ -327,16 +328,28 @@ function ReportHeader({
         >
           {workStageLabel(report.work_stage)}
         </span>
-        {shippedVersions.map((v) => (
-          <Link
-            key={v.id}
-            href={`/changelog/${v.id}`}
-            className={`${CHIP_BASE} ${toneClasses("brand")} inline-flex items-center gap-1 transition-colors hover:bg-brand/10`}
-          >
-            <Rocket aria-hidden className="size-3" />
-            Shipped in v{v.version}
-          </Link>
-        ))}
+        {shippedVersions.map((v) => {
+          const released = v.status === "released";
+          return (
+            <Link
+              key={v.id}
+              href={`/changelog/${v.id}`}
+              className={`${CHIP_BASE} ${toneClasses(released ? "brand" : "amber")} inline-flex items-center gap-1 transition-colors hover:bg-brand/10`}
+              title={
+                released
+                  ? `Shipped in the released v${v.version}`
+                  : `Queued for v${v.version} — not released yet`
+              }
+            >
+              {released ? (
+                <Rocket aria-hidden className="size-3" />
+              ) : (
+                <Clock aria-hidden className="size-3" />
+              )}
+              {released ? `Shipped in v${v.version}` : `Queued for v${v.version}`}
+            </Link>
+          );
+        })}
         {report.priority && (
           <span
             className={`${CHIP_BASE} ${toneClasses(priorityTone(report.priority))}`}

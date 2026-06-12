@@ -367,3 +367,25 @@ canonical write-up lives on disk.
   editing" banner to the active draft; overview card accent leads with
   `vX in development`. Verified `tsc`/`eslint`/`build`. Long-form in
   `CHANGELOG.md`.
+- **2026-06-12** — Release-driven "Fixed" + reporter notification
+  rewrite. Closes the feedback→changelog mismatch: flipping a version
+  **In development → Released** now opens a confirmation modal
+  (`ReleaseDialog`) listing every linked still-open report with an
+  editable message + clickable pre-written resolution lines (feature
+  requests lead "shipped", one line carries the version number);
+  confirming bulk-marks each report Fixed via `set_work_stage` (notifying
+  reporters, storing the resolution note) and releases the version in one
+  gesture. New `listReportsForRelease` / `releaseVersion` actions
+  (idempotent — already-resolved filtered out). The thread "Fixed" button
+  relabelled **Fixed (hotfix)** (the manual exception); the thread chip
+  splits **Queued for vX** (draft, amber) vs **Shipped in vX** (released,
+  brand). Paired with a reporter-notification rewrite in `Vestige-ios`
+  (migration `20260612100000_feedback_inprogress_notification.sql` +
+  `send-apns` + Swift): new strict-allowlist kind **`feedback_in_progress`**
+  fills the missing "Working on it" step (the 2026-06-10 rework had culled
+  it, so In-progress fired nothing or a mislabelled reply); `set_work_stage`
+  now maps each step to one kind (inProgress ⇒ feedback_in_progress, fixed
+  ⇒ feedback_resolved, note-without-status ⇒ feedback_message_posted, bare
+  moves silent). Verified `tsc`/`eslint`/`build` (web) + iOS Debug build
+  `BUILD SUCCEEDED`. Migration ships to prod via iOS `prod-deploy`. Long-form
+  in `CHANGELOG.md`.

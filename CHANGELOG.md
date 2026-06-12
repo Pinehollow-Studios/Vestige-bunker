@@ -5,6 +5,83 @@
 
 ---
 
+## 2026-06-12 — Release-driven "Fixed" + reporter notification rewrite
+
+Closes the long-standing mismatch in the feedback→changelog loop and fixes the
+reporter-side notifications that rode on top of it. Two coordinated pieces: a
+dashboard release flow (here) and a notification rewrite spanning the iOS repo
+(migration + Edge Function + Swift).
+
+### The mismatch
+
+"Fixed" had two disconnected triggers. The **Fixed button** on a feedback thread
+notified the reporter "Fixed" immediately — regardless of whether anything had
+shipped. **Shipping in a version** (tagging a report to a changelog line) was
+explicitly link-only: it changed nothing and told the reporter nothing. And
+**releasing a version was inert** — `setReleased` only flipped a status column,
+ignoring every linked report. So the natural action (ship the fix in a release)
+left reporters uninformed, while the button could cry "Fixed" before the fix
+existed.
+
+### Release becomes the canonical close
+
+Flipping a version **In development → Released** now opens a confirmation modal
+(`ReleaseDialog`, portalled over the editor). It lists every change line linked
+to a still-open report, each with an editable message box and a row of clickable
+pre-written resolution lines — feature requests lead with "shipped" phrasing, bugs
+with "fixed", and one line always carries the version number. Confirm marks each
+included report Fixed via the existing `set_work_stage(_, 'fixed', note)` RPC
+(notifying its reporter, storing the note as the resolution card) and releases the
+version in one gesture. Anonymous reporters (deleted accounts) still resolve, just
+without a notification — the SQL skips that itself.
+
+- New actions in `changelog/actions.ts`: `listReportsForRelease(versionId)`
+  (linked, non-resolved reports, one row per report, drives the dialog) and
+  `releaseVersion(versionId, items)` (bulk-fix selected reports, then flip
+  released; returns fixed/failed counts). Idempotent — already-resolved reports
+  are filtered out, so re-releasing never double-notifies.
+- `VersionEditor` intercepts the draft→released toggle to open the dialog;
+  reverting released→draft stays a plain toggle and never un-resolves a report.
+
+### The Fixed button kept as the hotfix exception
+
+The thread's "Fixed" button is relabelled **Fixed (hotfix)** with a hint that
+releasing a version is the normal path — it survives for one-off fixes not tracked
+in the changelog.
+
+### Queued vs shipped
+
+The thread header split the old "Shipped in vX" chip: a report linked to a **draft**
+version now reads **Queued for vX** (amber, clock), and only a **released** version
+reads **Shipped in vX** (brand, rocket) — so what's staged for the next release is
+visible without implying it already shipped.
+
+### Reporter notification rewrite (iOS repo)
+
+The reporter lifecycle is Sent → Working on it → Fixed, but the 2026-06-10 rework
+had culled `feedback_status_changed`, leaving **no notification for the
+In-progress step** — marking "Working on it" fired nothing, or a mislabelled
+"The team replied to your feedback". New strict-allowlist kind
+**`feedback_in_progress`** (twelve kinds now), fired exactly once when a report
+transitions into `inProgress`, carrying the operator's optional note as its body.
+`set_work_stage` rewritten so every step maps to one unambiguous kind:
+inProgress → `feedback_in_progress`, fixed → `feedback_resolved`, a note without a
+status change → `feedback_message_posted`, bare internal moves → silent. Mirrored
+across the `send-apns` Edge Function (push copy) and iOS (`AppNotification.Kind`
+case + decoder + `NotificationPresentation` glyph/headline + `AppState` tap route).
+See `Vestige-ios/CHANGELOG.md` + migration
+`20260612100000_feedback_inprogress_notification.sql`.
+
+### Notes
+
+- Dashboard: TypeScript clean, ESLint clean, `next build` green.
+- iOS: Debug build `BUILD SUCCEEDED`.
+- Smart-copy caveat: feature-request resolutions still render iOS's single "Fixed"
+  resolved state — the "shipped" wording is delivered through the chosen message,
+  not a distinct badge. A separate iOS "Shipped" state is an optional follow-up.
+- Migration ships to prod via the iOS `prod-deploy` flow (not applied here);
+  reporter notifications degrade gracefully on old builds (unknown kind skipped).
+
 ## 2026-06-11 — Changelog workflow streamlining: "In development" badge + faster version↔feedback wiring
 
 Editorial-velocity pass on the version changelog, all dashboard-side (no

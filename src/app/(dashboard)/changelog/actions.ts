@@ -396,6 +396,155 @@ export async function listOpenFeedback(
   };
 }
 
+// ── Release → bulk-fix the linked reports ─────────────────────────────────
+
+/** A linked, not-yet-resolved report surfaced in the release dialog. */
+export type ReleaseReportRow = {
+  reportId: string;
+  changeId: string;
+  changeKind: ChangeKind;
+  changeSummary: string;
+  reportKind: string;
+  reportBody: string;
+  /** False for anonymised reporters (account deleted) — still markable
+   *  fixed, just no notification fires. */
+  hasReporter: boolean;
+};
+
+/**
+ * The reports that releasing `versionId` would close: every change line in the
+ * version tagged to a feedback report that isn't already resolved. One row per
+ * report (the first linked line wins) so a reporter is never listed twice. Drives
+ * the release-confirmation dialog.
+ */
+export async function listReportsForRelease(
+  versionId: string,
+): Promise<ActionResult<ReleaseReportRow[]>> {
+  await requireAdmin();
+  const supabase = await createClient();
+
+  const { data: changeData, error } = await supabase
+    .from("app_version_changes")
+    .select("id, kind, summary, feedback_report_id")
+    .eq("version_id", versionId)
+    .not("feedback_report_id", "is", null)
+    .order("sort_index", { ascending: true });
+  if (error) return { ok: false, message: error.message };
+
+  const changes =
+    (changeData as Array<{
+      id: string;
+      kind: ChangeKind;
+      summary: string;
+      feedback_report_id: string;
+    }> | null) ?? [];
+  if (changes.length === 0) return { ok: true, data: [] };
+
+  const reportIds = Array.from(new Set(changes.map((c) => c.feedback_report_id)));
+  const { data: reportData } = await supabase
+    .from("feedback_reports")
+    .select("id, kind, status, body, user_id")
+    .in("id", reportIds);
+  const byId = new Map(
+    ((reportData as Array<{
+      id: string;
+      kind: string;
+      status: string;
+      body: string;
+      user_id: string | null;
+    }> | null) ?? []).map((r) => [r.id, r]),
+  );
+
+  const out: ReleaseReportRow[] = [];
+  const seen = new Set<string>();
+  for (const c of changes) {
+    const rep = byId.get(c.feedback_report_id);
+    if (!rep) continue;
+    if (rep.status === "resolved") continue; // already fixed — never re-notify
+    if (seen.has(rep.id)) continue; // first linked line per report
+    seen.add(rep.id);
+    out.push({
+      reportId: rep.id,
+      changeId: c.id,
+      changeKind: c.kind,
+      changeSummary: c.summary,
+      reportKind: rep.kind,
+      reportBody: rep.body,
+      hasReporter: rep.user_id != null,
+    });
+  }
+  return { ok: true, data: out };
+}
+
+export type ReleaseItem = {
+  reportId: string;
+  note: string | null;
+  /** Include this report in the release (mark it fixed + notify its reporter). */
+  include: boolean;
+};
+
+/**
+ * Release a version and, in one gesture, close every selected linked report.
+ *
+ * For each included report we call the existing `set_work_stage(_, 'fixed', note)`
+ * RPC — which sets status=resolved, stores the note as the resolution card, and
+ * fires `feedback_resolved` (the SQL skips the notification for anonymised
+ * reporters). Then the version flips to released. Already-resolved reports were
+ * filtered out by listReportsForRelease, so re-releasing won't double-notify.
+ */
+export async function releaseVersion(
+  versionId: string,
+  items: ReleaseItem[],
+): Promise<ActionResult<{ fixed: number; failed: number }>> {
+  const admin = await requireAdmin();
+  // Releasing fires a batch of reporter notifications — gate it to super_admin.
+  if (admin.role !== "super_admin") {
+    return { ok: false, message: "Releasing a version requires super_admin." };
+  }
+  const supabase = await createClient();
+
+  let fixed = 0;
+  let failed = 0;
+  for (const item of items) {
+    if (!item.include) continue;
+    const { error } = await supabase.rpc("set_work_stage", {
+      p_report_id: item.reportId,
+      p_stage: "fixed",
+      p_resolution_note: item.note?.trim() || null,
+    });
+    if (error) {
+      failed += 1;
+      console.error("releaseVersion set_work_stage", error);
+    } else {
+      fixed += 1;
+      revalidatePath(`/feedback/${item.reportId}`);
+    }
+  }
+
+  // Flip the version to released (stamp released_at when not already set —
+  // mirrors setReleased).
+  const { data: existing } = await supabase
+    .from("app_versions")
+    .select("released_at")
+    .eq("id", versionId)
+    .maybeSingle();
+  const update: Record<string, unknown> = {
+    status: "released",
+    last_edited_by_admin_id: admin.id,
+  };
+  if (!existing?.released_at) update.released_at = new Date().toISOString();
+
+  const { error: relErr } = await supabase
+    .from("app_versions")
+    .update(update)
+    .eq("id", versionId);
+  if (relErr) return { ok: false, message: relErr.message };
+
+  revalidateVersion(versionId);
+  revalidatePath("/feedback");
+  return { ok: true, data: { fixed, failed } };
+}
+
 /** Collapse a report body into a single-line change summary (≤140 chars). */
 function summaryFromBody(body: string): string {
   const oneLine = body.trim().replace(/\s+/g, " ");

@@ -217,13 +217,17 @@ function ExternalControls({
         />
         <ExternalButton
           icon={<Send className="size-3.5" />}
-          label="Fixed"
+          label="Fixed (hotfix)"
           tone="brand"
           active={currentStage === "fixed"}
           disabled={pending}
           onClick={() => toggle("fixed")}
         />
       </div>
+      <p className="text-[10px] text-ink-3">
+        Marking fixed here is for one-off hotfixes not tracked in the changelog.
+        Normally, releasing a version closes its linked reports for you.
+      </p>
 
       {open && (
         <div className="space-y-2 rounded-lg border border-rule/70 bg-paper-sunken/40 p-3">
