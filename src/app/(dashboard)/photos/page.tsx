@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ImageIcon, MapPin } from "lucide-react";
+import { ChevronRight, ImageIcon, MapPin } from "lucide-react";
 import { SectionHeader } from "@/components/admin/SectionHeader";
 import {
   activeStorageBaseUrl,
@@ -204,6 +204,9 @@ export default async function PhotosPage(props: { searchParams: SearchParams }) 
               baseUrl={baseUrl}
               uploaderNames={uploaderNames}
               courseNames={courseNames}
+              // Collapsed by default in the all-kinds view so the tab opens to
+              // category headers, not a wall of photos; a focused kind opens.
+              defaultOpen={kind !== "all"}
             />
           ))
       )}
@@ -217,50 +220,63 @@ function PhotoSection({
   baseUrl,
   uploaderNames,
   courseNames,
+  defaultOpen,
 }: {
   section: KindBucket;
   active: PhotoModerationState;
   baseUrl: string;
   uploaderNames: Record<string, string>;
   courseNames: Record<string, string>;
+  defaultOpen: boolean;
 }) {
   const { kind, count, rows } = section;
   const label = KIND_FILTERS.find((k) => k.value === kind)?.label ?? prettyKind(kind);
   const hasMore = count > rows.length;
 
   return (
-    <section className="space-y-3">
-      <div className="flex items-end justify-between gap-3">
+    <details open={defaultOpen} className="group rounded-xl glass-panel">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
         <div className="flex items-center gap-2">
+          <ChevronRight
+            className="size-4 text-ink-3 transition-transform group-open:rotate-90"
+            aria-hidden
+          />
           <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-2">{label}</h2>
           <span className="text-[11px] tabular-nums text-ink-3">{count}</span>
         </div>
-        {hasMore && (
-          <Link
-            href={`/photos?state=${active}&kind=${kind}`}
-            className="text-[11px] font-medium text-brand hover:underline"
-          >
-            View all {count} →
-          </Link>
+        <span className="text-[11px] text-ink-3 group-open:hidden">
+          {count} to review
+        </span>
+      </summary>
+
+      <div className="space-y-3 px-4 pb-4">
+        {rows.length === 0 ? (
+          <EmptyState title={`No ${label.toLowerCase()}`} subtitle="Nothing in this bucket yet." />
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {rows.map((row) => (
+                <PhotoTile
+                  key={row.id}
+                  row={row}
+                  baseUrl={baseUrl}
+                  uploaderName={row.uploader_user_id ? uploaderNames[row.uploader_user_id] : null}
+                  courseName={row.course_id ? courseNames[row.course_id] : null}
+                />
+              ))}
+            </div>
+            {hasMore && (
+              <Link
+                href={`/photos?state=${active}&kind=${kind}`}
+                className="inline-block text-[11px] font-medium text-brand hover:underline"
+              >
+                View all {count} →
+              </Link>
+            )}
+          </>
         )}
       </div>
-
-      {rows.length === 0 ? (
-        <EmptyState title={`No ${label.toLowerCase()}`} subtitle="Nothing in this bucket yet." />
-      ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {rows.map((row) => (
-            <PhotoTile
-              key={row.id}
-              row={row}
-              baseUrl={baseUrl}
-              uploaderName={row.uploader_user_id ? uploaderNames[row.uploader_user_id] : null}
-              courseName={row.course_id ? courseNames[row.course_id] : null}
-            />
-          ))}
-        </div>
-      )}
-    </section>
+    </details>
   );
 }
 
