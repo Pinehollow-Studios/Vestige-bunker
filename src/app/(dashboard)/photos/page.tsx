@@ -56,6 +56,15 @@ const KIND_FILTERS = [
 ] as const;
 type KindFilter = (typeof KIND_FILTERS)[number]["value"];
 
+// The queue is sectioned by kind (course / round / avatar) so a moderator
+// isn't hit with one undifferentiated dump — course photos (public) lead.
+// In the "all" view each section is capped and offers a "View all" link into
+// its own kind filter; a focused kind view shows that section in full.
+const SECTION_KINDS: PhotoKind[] = ["coursePhoto", "roundPhoto", "avatar"];
+const SECTION_CAP = 9;
+const PHOTO_COLS =
+  "id, original_storage_key, variants, kind, moderation_state, uploader_user_id, exif_taken_at, exif_gps_lat, exif_gps_lng, round_id, course_id, width, height, created_at";
+
 type SearchParams = Promise<{ state?: string; kind?: string }>;
 
 /**
@@ -91,7 +100,6 @@ export default async function PhotosPage(props: { searchParams: SearchParams }) 
         <SectionHeader
           eyebrow="Queues · Photo moderation"
           title="Photo moderation"
-          description="Review user-uploaded round photos before they appear on course pages."
         />
         <ConfigNotice />
       </div>
@@ -100,48 +108,44 @@ export default async function PhotosPage(props: { searchParams: SearchParams }) 
 
   const baseUrl = await activeStorageBaseUrl();
 
-  const [modCountsRes, listRes] = await Promise.all([
-    Promise.all(
-      MODERATION_BUCKETS.map(async (state) => {
-        let q = supabase
-          .from("photos")
-          .select("id", { count: "exact", head: true })
-          .eq("moderation_state", state);
-        if (kind !== "all") q = q.eq("kind", kind);
-        const { count } = await q;
-        return [state, count ?? 0] as const;
-      }),
-    ),
-    (() => {
+  // State-bucket counts for the StatTiles (scoped to the active kind filter).
+  const modCountsRes = await Promise.all(
+    MODERATION_BUCKETS.map(async (state) => {
       let q = supabase
         .from("photos")
-        .select(
-          "id, original_storage_key, variants, kind, moderation_state, uploader_user_id, exif_taken_at, exif_gps_lat, exif_gps_lng, round_id, course_id, width, height, created_at",
-        )
-        .eq("moderation_state", active);
+        .select("id", { count: "exact", head: true })
+        .eq("moderation_state", state);
       if (kind !== "all") q = q.eq("kind", kind);
-      return q.order("created_at", { ascending: false }).limit(60);
-    })(),
-  ]);
-
+      const { count } = await q;
+      return [state, count ?? 0] as const;
+    }),
+  );
   const modCounts = Object.fromEntries(modCountsRes) as Record<PhotoModerationState, number>;
-  const rows: Row[] = (listRes.data as Row[] | null) ?? [];
 
-  // Resolve uploader + course display names in one round-trip each — the tile
-  // needs human names, not UUIDs. Same approach as courses/page.tsx.
-  const uploaderIds = uniq(rows.map((r) => r.uploader_user_id));
-  const courseIds = uniq(rows.map((r) => r.course_id));
+  // One section per kind. "all" → the three sections, each capped (with a
+  // "View all" link); a focused kind → that one section, fuller.
+  const sectionKinds = kind === "all" ? SECTION_KINDS : [kind];
+  const sectionLimit = kind === "all" ? SECTION_CAP : 60;
+  const sections = await Promise.all(
+    sectionKinds.map((k) => fetchKindBucket(supabase, k, active, sectionLimit)),
+  );
+
+  // Resolve uploader + course display names once across every section's rows.
+  const allRows = sections.flatMap((s) => s.rows);
+  const uploaderIds = uniq(allRows.map((r) => r.uploader_user_id));
+  const courseIds = uniq(allRows.map((r) => r.course_id));
   const [uploaderNames, courseNames] = await Promise.all([
     resolveUploaderNames(supabase, uploaderIds),
     resolveCourseNames(supabase, courseIds),
   ]);
+  const sectionError = sections.find((s) => s.error)?.error ?? null;
+  const totalShown = sections.reduce((n, s) => n + s.count, 0);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <SectionHeader
         eyebrow="Queues · Photo moderation"
         title="Photo moderation"
-        description="Review user-uploaded round and course photos before they appear on course pages. Course photos are public, shared-gallery submissions — review them at a higher bar. Approve, reject, or flag each one."
       />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -174,43 +178,89 @@ export default async function PhotosPage(props: { searchParams: SearchParams }) 
         ))}
       </div>
 
-      <section className="space-y-3">
-        <div className="flex items-end justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-2">
-              {prettyMod(active)} queue
-            </h2>
-            <span className="text-[11px] tabular-nums text-ink-3">{rows.length}</span>
-          </div>
-          {listRes.error && (
-            <p className="text-xs text-alert">Failed to load: {listRes.error.message}</p>
-          )}
-        </div>
+      {sectionError && (
+        <p className="text-xs text-alert">Failed to load: {sectionError}</p>
+      )}
 
-        {rows.length === 0 ? (
-          <EmptyState
-            title={active === "pending" ? "Nothing to moderate" : `No ${prettyMod(active).toLowerCase()} photos`}
-            subtitle={
-              active === "pending"
-                ? "No photos are awaiting review."
-                : "Nothing in this bucket yet."
-            }
-          />
-        ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {rows.map((row) => (
-              <PhotoTile
-                key={row.id}
-                row={row}
-                baseUrl={baseUrl}
-                uploaderName={row.uploader_user_id ? uploaderNames[row.uploader_user_id] : null}
-                courseName={row.course_id ? courseNames[row.course_id] : null}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      {totalShown === 0 ? (
+        <EmptyState
+          title={active === "pending" ? "Nothing to moderate" : `No ${prettyMod(active).toLowerCase()} photos`}
+          subtitle={
+            active === "pending"
+              ? "No photos are awaiting review."
+              : "Nothing in this bucket yet."
+          }
+        />
+      ) : (
+        sections
+          // In the all-kinds view, hide a kind that has nothing in this bucket;
+          // in a focused kind view, keep its (possibly empty) section.
+          .filter((s) => s.count > 0 || kind !== "all")
+          .map((s) => (
+            <PhotoSection
+              key={s.kind}
+              section={s}
+              active={active}
+              baseUrl={baseUrl}
+              uploaderNames={uploaderNames}
+              courseNames={courseNames}
+            />
+          ))
+      )}
     </div>
+  );
+}
+
+function PhotoSection({
+  section,
+  active,
+  baseUrl,
+  uploaderNames,
+  courseNames,
+}: {
+  section: KindBucket;
+  active: PhotoModerationState;
+  baseUrl: string;
+  uploaderNames: Record<string, string>;
+  courseNames: Record<string, string>;
+}) {
+  const { kind, count, rows } = section;
+  const label = KIND_FILTERS.find((k) => k.value === kind)?.label ?? prettyKind(kind);
+  const hasMore = count > rows.length;
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-end justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-2">{label}</h2>
+          <span className="text-[11px] tabular-nums text-ink-3">{count}</span>
+        </div>
+        {hasMore && (
+          <Link
+            href={`/photos?state=${active}&kind=${kind}`}
+            className="text-[11px] font-medium text-brand hover:underline"
+          >
+            View all {count} →
+          </Link>
+        )}
+      </div>
+
+      {rows.length === 0 ? (
+        <EmptyState title={`No ${label.toLowerCase()}`} subtitle="Nothing in this bucket yet." />
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {rows.map((row) => (
+            <PhotoTile
+              key={row.id}
+              row={row}
+              baseUrl={baseUrl}
+              uploaderName={row.uploader_user_id ? uploaderNames[row.uploader_user_id] : null}
+              courseName={row.course_id ? courseNames[row.course_id] : null}
+            />
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -388,6 +438,42 @@ function ConfigNotice() {
 }
 
 type SupabaseClient = NonNullable<Awaited<ReturnType<typeof tryCreateServiceClient>>>;
+
+type KindBucket = {
+  kind: PhotoKind;
+  count: number;
+  rows: Row[];
+  error: string | null;
+};
+
+/** Fetch one kind's count + newest `limit` rows for a moderation state. */
+async function fetchKindBucket(
+  supabase: SupabaseClient,
+  kind: PhotoKind,
+  state: PhotoModerationState,
+  limit: number,
+): Promise<KindBucket> {
+  const [countRes, listRes] = await Promise.all([
+    supabase
+      .from("photos")
+      .select("id", { count: "exact", head: true })
+      .eq("moderation_state", state)
+      .eq("kind", kind),
+    supabase
+      .from("photos")
+      .select(PHOTO_COLS)
+      .eq("moderation_state", state)
+      .eq("kind", kind)
+      .order("created_at", { ascending: false })
+      .limit(limit),
+  ]);
+  return {
+    kind,
+    count: countRes.count ?? 0,
+    rows: (listRes.data as Row[] | null) ?? [],
+    error: listRes.error?.message ?? null,
+  };
+}
 
 function uniq(values: Array<string | null>): string[] {
   return Array.from(new Set(values.filter((v): v is string => typeof v === "string")));
