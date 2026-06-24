@@ -467,11 +467,18 @@ async function fetchKindBucket(
       .order("created_at", { ascending: false })
       .limit(limit),
   ]);
+  // A kind whose enum value doesn't exist on this environment yet — e.g.
+  // `coursePhoto` on prod before the Vestige-ios migration lands — makes
+  // Postgres reject the `.eq("kind", …)` filter with an "invalid input value
+  // for enum" error. Treat that as an empty bucket (the section simply shows
+  // nothing until the enum + its photos arrive), not a page-level failure.
+  const err = listRes.error?.message ?? null;
+  const unknownEnum = err?.includes("invalid input value for enum") ?? false;
   return {
     kind,
     count: countRes.count ?? 0,
     rows: (listRes.data as Row[] | null) ?? [],
-    error: listRes.error?.message ?? null,
+    error: unknownEnum ? null : err,
   };
 }
 
