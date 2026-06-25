@@ -24,7 +24,7 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const isoMsAgo = (ms: number) => new Date(Date.now() - ms).toISOString();
 
 /**
- * Overview — a balanced digest + command center. The header (with the doctrine
+ * Overview — a balanced digest + command center. The header (with the mantra
  * one-liner) + quick actions paint instantly; the three data sections — Pulse,
  * Needs you, Live & shipped — stream in behind their own Suspense boundaries so
  * the page never blocks on the slowest query.
@@ -67,8 +67,7 @@ function Header() {
       </h1>
       <p className="max-w-2xl text-sm italic leading-relaxed text-ink-3">
         &ldquo;If you don&rsquo;t open one of our apps for a month, that is a successful outcome — for
-        both of us.&rdquo;{" "}
-        <span className="not-italic text-ink-3/70">— the Vestige doctrine</span>
+        both of us.&rdquo;
       </p>
     </header>
   );
