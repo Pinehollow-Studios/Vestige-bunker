@@ -55,6 +55,13 @@ export default function RootLayout({
       className={`${inter.variable} ${dmSans.variable} ${dmHero.variable} ${manrope.variable} ${mono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        {/* Restore the sidebar collapsed state before paint (no flash). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              'try{if(localStorage.getItem("vestige.sidebar")==="collapsed"){document.documentElement.classList.add("sidebar-collapsed")}}catch(e){}',
+          }}
+        />
         {/* Dark-only: the dashboard matches the iOS app (Atlas is dark). The
             class is forced so every `dark:` utility resolves and the toggle is
             gone. */}

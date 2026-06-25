@@ -6,118 +6,112 @@ import {
   AlertTriangle,
   Award,
   BarChart3,
-  ChevronDown,
   Images,
   LayoutDashboard,
   ListChecks,
   type LucideIcon,
-  MapPin,
+  Map as MapIcon,
   Megaphone,
   MessageSquareWarning,
+  RefreshCw,
   Rocket,
   Shield,
   Smartphone,
   Sparkles,
   Users,
 } from "lucide-react";
+import { SidebarCollapseToggle } from "@/components/admin/SidebarCollapseToggle";
 import { cn } from "@/lib/utils";
 
 /**
- * Shared navigation surface. Both the desktop {@link Sidebar} (fixed rail at
- * `lg+`) and the {@link MobileNav} drawer (`<lg`) render {@link NavContent},
- * so the two never drift. The only difference is the container chrome each
- * one wraps it in — and `onNavigate`, which the drawer passes to close itself
- * the moment a link is tapped.
+ * Shared navigation surface for the desktop {@link Sidebar} and the
+ * {@link MobileNav} drawer. Grouped by domain — the way the team actually works
+ * (Editorial, Operations, …) rather than a flat list. Collapse-aware: every
+ * label / count / group heading carries a class the `.sidebar-collapsed` CSS
+ * hides, leaving an icon rail.
  */
 
 export type NavItem = {
   href: string;
   label: string;
   icon: LucideIcon;
-  /** Optional dynamic count rendered in the right-side pill. */
   countKey?: string;
 };
 
-/** Jack's day-to-day — the surfaces he actually touches, in priority order. */
-export const EVERYDAY: NavItem[] = [
-  { href: "/", label: "Overview", icon: LayoutDashboard },
-  { href: "/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/feedback", label: "Feedback", icon: MessageSquareWarning, countKey: "feedback" },
-  { href: "/announcements", label: "Announcements", icon: Megaphone, countKey: "announcements" },
-  { href: "/changelog", label: "Changelog", icon: Rocket, countKey: "changelog" },
-  { href: "/curated", label: "Curated lists", icon: Sparkles, countKey: "curated" },
-  { href: "/badges", label: "Badges", icon: Award },
-  { href: "/courses", label: "Courses", icon: MapPin, countKey: "courses" },
-  { href: "/photos", label: "Photos", icon: Images, countKey: "photos" },
-  { href: "/users", label: "Users", icon: Users, countKey: "users" },
+type NavGroup = { label?: string; items: NavItem[] };
+
+export const NAV_GROUPS: NavGroup[] = [
+  { items: [{ href: "/", label: "Overview", icon: LayoutDashboard }] },
+  {
+    label: "Editorial",
+    items: [
+      { href: "/curated", label: "Curated lists", icon: Sparkles, countKey: "curated" },
+      { href: "/courses", label: "Courses", icon: MapIcon, countKey: "courses" },
+      { href: "/badges", label: "Badges", icon: Award },
+      { href: "/announcements", label: "Announcements", icon: Megaphone, countKey: "announcements" },
+      { href: "/changelog", label: "Changelog", icon: Rocket, countKey: "changelog" },
+    ],
+  },
+  {
+    label: "Operations",
+    items: [
+      { href: "/feedback", label: "Feedback", icon: MessageSquareWarning, countKey: "feedback" },
+      { href: "/photos", label: "Photos", icon: Images, countKey: "photos" },
+      { href: "/safeguarding", label: "Safeguarding", icon: Shield, countKey: "safeguarding" },
+      { href: "/crashes", label: "Crashes", icon: AlertTriangle, countKey: "crashes" },
+      { href: "/lists", label: "List verification", icon: ListChecks, countKey: "verification" },
+    ],
+  },
+  { label: "People", items: [{ href: "/users", label: "Users", icon: Users, countKey: "users" }] },
+  { label: "Insight", items: [{ href: "/analytics", label: "Analytics", icon: BarChart3 }] },
+  {
+    label: "System",
+    items: [
+      { href: "/app-version", label: "App version", icon: Smartphone },
+      { href: "/sync", label: "Sync", icon: RefreshCw },
+    ],
+  },
 ];
 
-/** Developer / ops surfaces — tucked behind a collapsed group so Jack isn't
- *  faced with them. */
-export const ADVANCED: NavItem[] = [
-  { href: "/lists", label: "List verification", icon: ListChecks, countKey: "verification" },
-  { href: "/crashes", label: "Crashes", icon: AlertTriangle, countKey: "crashes" },
-  { href: "/safeguarding", label: "Safeguarding", icon: Shield, countKey: "safeguarding" },
-  { href: "/app-version", label: "App version", icon: Smartphone },
-];
-
-/**
- * The body of the nav — brand header, the everyday list, the collapsed
- * Advanced group, and the footer. Container-agnostic: the caller supplies the
- * `<aside>` / drawer panel chrome (background, border, width). Computes its own
- * active state from the current path.
- */
 export function NavContent({
   counts,
   onNavigate,
+  collapsible = false,
 }: {
   counts?: Record<string, number | undefined>;
-  /** Called when any nav link is activated — the drawer uses it to close. */
   onNavigate?: () => void;
+  /** Show the collapse toggle (desktop sidebar only — not the mobile drawer). */
+  collapsible?: boolean;
 }) {
   const pathname = usePathname();
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
-  const advancedActive = ADVANCED.some((n) => isActive(n.href));
 
   return (
     <>
-      <BrandHeader onNavigate={onNavigate} />
-      <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
-        <ul className="space-y-0.5">
-          {EVERYDAY.map((item) => (
-            <NavRow
-              key={item.href}
-              item={item}
-              active={isActive(item.href)}
-              count={item.countKey ? counts?.[item.countKey] : undefined}
-              onNavigate={onNavigate}
-            />
-          ))}
-        </ul>
-
-        <details open={advancedActive} className="group/adv">
-          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-3 transition-colors hover:text-ink-2 [&::-webkit-details-marker]:hidden">
-            Advanced
-            <ChevronDown
-              aria-hidden
-              className="size-3 transition-transform group-open/adv:rotate-180"
-            />
-          </summary>
-          <ul className="mt-1 space-y-0.5">
-            {ADVANCED.map((item) => (
-              <NavRow
-                key={item.href}
-                item={item}
-                active={isActive(item.href)}
-                count={item.countKey ? counts?.[item.countKey] : undefined}
-                onNavigate={onNavigate}
-              />
-            ))}
-          </ul>
-        </details>
+      <BrandHeader onNavigate={onNavigate} collapsible={collapsible} />
+      <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+        {NAV_GROUPS.map((group, gi) => (
+          <div key={gi} className="space-y-0.5">
+            {group.label && (
+              <p className="nav-group-label px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-3">
+                {group.label}
+              </p>
+            )}
+            <ul className="space-y-0.5">
+              {group.items.map((item) => (
+                <NavRow
+                  key={item.href}
+                  item={item}
+                  active={isActive(item.href)}
+                  count={item.countKey ? counts?.[item.countKey] : undefined}
+                  onNavigate={onNavigate}
+                />
+              ))}
+            </ul>
+          </div>
+        ))}
       </nav>
-      <SidebarFooter />
     </>
   );
 }
@@ -138,27 +132,22 @@ function NavRow({
     <li>
       <Link
         href={item.href}
+        title={item.label}
         onClick={onNavigate}
         className={cn(
-          "group/nav relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
+          "nav-row group/nav relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
           active
             ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
             : "text-sidebar-foreground/80 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground",
         )}
       >
         {active && (
-          <span
-            aria-hidden
-            className="absolute inset-y-1.5 left-0 w-[3px] rounded-r-full bg-brand"
-          />
+          <span aria-hidden className="absolute inset-y-1.5 left-0 w-[3px] rounded-r-full bg-brand" />
         )}
         <Icon
-          className={cn(
-            "size-4 shrink-0",
-            active ? "text-brand" : "text-ink-3 group-hover/nav:text-ink-2",
-          )}
+          className={cn("size-4 shrink-0", active ? "text-brand" : "text-ink-3 group-hover/nav:text-ink-2")}
         />
-        <span className="min-w-0 flex-1 truncate">{item.label}</span>
+        <span className="nav-label min-w-0 flex-1 truncate">{item.label}</span>
         <NavCount count={count} active={active} />
       </Link>
     </li>
@@ -170,7 +159,7 @@ function NavCount({ count, active }: { count: number | undefined; active: boolea
   return (
     <span
       className={cn(
-        "min-w-[20px] rounded-full px-1.5 py-px text-center text-[10px] font-semibold tabular-nums",
+        "nav-count min-w-[20px] rounded-full px-1.5 py-px text-center text-[10px] font-semibold tabular-nums",
         active ? "bg-brand text-brand-fg" : "bg-brand/15 text-brand",
       )}
     >
@@ -179,25 +168,21 @@ function NavCount({ count, active }: { count: number | undefined; active: boolea
   );
 }
 
-function BrandHeader({ onNavigate }: { onNavigate?: () => void }) {
+function BrandHeader({ onNavigate, collapsible }: { onNavigate?: () => void; collapsible?: boolean }) {
   return (
-    <Link
-      href="/"
-      onClick={onNavigate}
-      className="flex h-16 shrink-0 items-center gap-3 border-b border-border/70 px-5"
-    >
-      <BrandMark className="size-9" />
-      <div className="min-w-0 leading-tight">
+    <div className="nav-brand flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border/70 px-4">
+      <Link href="/" onClick={onNavigate} className="brand-wordmark min-w-0 leading-tight">
         <p className="font-display text-base font-semibold tracking-tight text-ink">Vestige</p>
         <p className="text-[10px] uppercase tracking-[0.18em] text-ink-3">Admin</p>
-      </div>
-    </Link>
+      </Link>
+      {collapsible && <SidebarCollapseToggle />}
+    </div>
   );
 }
 
 /**
- * The Vestige flag mark — pin/flag silhouette in brand mint with a deep ocean
- * fill. Mirrors the iOS splash + the marketing `FwMark` lockup.
+ * The Vestige flag mark — kept for the login + unauthorized screens (the
+ * dashboard sidebar no longer uses it). Pin/flag silhouette in brand mint.
  */
 export function BrandMark({ className }: { className?: string }) {
   return (
@@ -225,18 +210,5 @@ export function BrandMark({ className }: { className?: string }) {
         <path d="M9 5 L21 8 L17 11 L21 14 L9 14 Z" fill="var(--brand)" stroke="none" />
       </svg>
     </span>
-  );
-}
-
-function SidebarFooter() {
-  const sha = (process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ?? "").slice(0, 7);
-  return (
-    <div className="shrink-0 border-t border-border/70 px-5 py-4">
-      <p className="flex items-center gap-2 text-[11px] leading-snug text-ink-3">
-        <span aria-hidden className="size-1.5 rounded-full bg-brand" />
-        Vestige Admin
-        {sha && <span className="font-mono text-ink-3/70">· {sha}</span>}
-      </p>
-    </div>
   );
 }

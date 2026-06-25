@@ -1,99 +1,48 @@
-import { Button } from "@/components/ui/button";
-import { EnvToggle } from "@/components/admin/EnvToggle";
 import { CommandTrigger } from "@/components/admin/CommandTrigger";
 import { MobileNav } from "@/components/admin/MobileNav";
-import { signOut } from "@/app/(dashboard)/actions";
-import {
-  type AdminRole,
-  type AdminUser,
-  adminDisplayLabel,
-  adminInitials,
-} from "@/lib/auth/requireAdmin";
+import { PageContext } from "@/components/admin/PageContext";
+import { QuickCreate } from "@/components/admin/QuickCreate";
+import { AttentionBell } from "@/components/admin/AttentionBell";
+import { AccountMenu } from "@/components/admin/AccountMenu";
+import { type AdminUser, adminDisplayLabel, adminInitials } from "@/lib/auth/requireAdmin";
 import type { AdminEnvKey } from "@/lib/supabase/env";
 
 type Props = {
   admin: AdminUser;
   env: AdminEnvKey;
   devSwitchEnabled: boolean;
-  /** Sidebar badge counts — forwarded to the mobile drawer's nav. */
   counts?: Record<string, number | undefined>;
 };
 
 export function TopBar({ admin, env, devSwitchEnabled, counts }: Props) {
-  const sha = (process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ?? "").slice(0, 7);
-  const branch = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF;
-
   const label = adminDisplayLabel(admin);
   const initials = adminInitials(admin);
-  const secondary =
-    admin.username && admin.displayName
-      ? `@${admin.username}`
-      : admin.email ?? null;
+  const secondary = admin.username && admin.displayName ? `@${admin.username}` : admin.email ?? null;
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-4 border-b border-border/70 bg-paper-raised/75 px-4 backdrop-blur-md sm:px-6">
+    <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b border-border/70 bg-paper-raised/80 px-4 backdrop-blur-md sm:px-6">
       <div className="flex min-w-0 items-center gap-3">
         <MobileNav counts={counts} />
-        <CommandTrigger />
-        <EnvToggle current={env} enabled={devSwitchEnabled} />
-        {(sha || branch) && (
-          <span className="hidden items-center gap-1.5 rounded-full border border-border/60 bg-paper-sunken/60 px-2.5 py-1 text-[10px] font-medium text-ink-3 md:inline-flex">
-            {branch && (
-              <span className="font-mono">
-                {branch.length > 14 ? branch.slice(0, 14) + "…" : branch}
-              </span>
-            )}
-            {sha && <span className="font-mono text-ink-3/80">{sha}</span>}
-          </span>
-        )}
+        <PageContext />
       </div>
-      <div className="flex items-center gap-2">
-        <RoleBadge role={admin.role} />
-        <div className="hidden items-center gap-2 rounded-full border border-border/70 bg-paper-sunken/60 py-1 pr-3 pl-1 sm:flex">
-          <span
-            aria-hidden
-            className="flex size-7 items-center justify-center rounded-full bg-brand text-[10px] font-semibold uppercase tracking-wider text-brand-fg"
-          >
-            {initials}
-          </span>
-          <span className="flex min-w-0 flex-col leading-tight">
-            <span className="max-w-[160px] truncate text-xs font-semibold text-ink">
-              {label}
-            </span>
-            {secondary && (
-              <span className="max-w-[160px] truncate text-[10px] text-ink-3">
-                {secondary}
-              </span>
-            )}
-          </span>
-        </div>
-        <form action={signOut}>
-          <Button type="submit" variant="ghost" size="sm">
-            Sign out
-          </Button>
-        </form>
+
+      <div className="flex items-center gap-2 sm:gap-2.5">
+        <CommandTrigger />
+        <QuickCreate />
+        <AttentionBell
+          feedback={counts?.feedback}
+          photos={counts?.photos}
+          safeguarding={counts?.safeguarding}
+        />
+        <AccountMenu
+          label={label}
+          secondary={secondary}
+          initials={initials}
+          role={admin.role}
+          env={env}
+          devSwitchEnabled={devSwitchEnabled}
+        />
       </div>
     </header>
   );
-}
-
-function RoleBadge({ role }: { role: AdminRole }) {
-  return (
-    <span className="hidden rounded-full border border-brand/25 bg-brand/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-brand sm:inline-flex">
-      {roleLabel(role)}
-    </span>
-  );
-}
-
-function roleLabel(role: AdminRole): string {
-  switch (role) {
-    case "super_admin":
-      return "Super admin";
-    case "moderator":
-      return "Moderator";
-    case "editor":
-      return "Editor";
-    default:
-      return String(role);
-  }
 }

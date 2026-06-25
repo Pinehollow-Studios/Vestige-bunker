@@ -19,8 +19,8 @@ export function Sidebar({
   adminRole?: AdminRole;
 }) {
   return (
-    <aside className="hidden flex-col border-r border-border/70 bg-sidebar text-sidebar-foreground lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:w-64">
-      <NavContent counts={counts} />
+    <aside className="hidden flex-col border-r border-border/70 bg-sidebar text-sidebar-foreground transition-[width] duration-200 lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:w-[var(--sidebar-w)]">
+      <NavContent counts={counts} collapsible />
     </aside>
   );
 }

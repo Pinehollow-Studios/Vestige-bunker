@@ -10,7 +10,7 @@ import {
   LogOut,
   Search,
 } from "lucide-react";
-import { EVERYDAY, ADVANCED } from "@/components/admin/nav";
+import { NAV_GROUPS } from "@/components/admin/nav";
 import { setEnv, signOut } from "@/app/(dashboard)/actions";
 import type { AdminEnvKey } from "@/lib/supabase/env";
 import type { SearchGroup } from "@/app/api/search/route";
@@ -19,7 +19,7 @@ import type { SearchGroup } from "@/app/api/search/route";
  *  search button). Keeps the trigger decoupled from this single mounted host. */
 export const OPEN_COMMAND_EVENT = "vestige:command";
 
-const NAV = [...EVERYDAY, ...ADVANCED];
+const NAV = NAV_GROUPS.flatMap((g) => g.items);
 
 /**
  * The ⌘K command palette. Mounted once in the dashboard layout. Navigate to any

@@ -38,7 +38,7 @@ export default async function DashboardLayout({
         <SidebarWithCounts adminRole={admin.role} />
       </Suspense>
 
-      <div className="relative z-10 flex min-h-dvh min-w-0 flex-col lg:pl-64">
+      <div className="relative z-10 flex min-h-dvh min-w-0 flex-col transition-[padding] duration-200 lg:pl-[var(--sidebar-w)]">
         <Suspense
           fallback={<TopBar admin={admin} env={env} devSwitchEnabled={DEV_SWITCH_ENABLED} />}
         >

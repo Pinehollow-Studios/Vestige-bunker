@@ -473,3 +473,45 @@
     transition: none !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Collapsible sidebar rail. One CSS var drives both the fixed
+   sidebar width and the main column's left padding, so collapsing
+   is pure CSS off a `.sidebar-collapsed` class on <html> — toggled
+   client-side + persisted, set pre-paint by an inline script (no
+   flash, no server/client state to coordinate).
+   ═══════════════════════════════════════════════════════════════ */
+:root {
+  --sidebar-w: 16rem;
+}
+html.sidebar-collapsed {
+  --sidebar-w: 4.25rem;
+}
+
+/* When collapsed: hide every label / count / group heading / wordmark,
+   centre the row glyphs. The icons + active bar remain. */
+html.sidebar-collapsed .nav-label,
+html.sidebar-collapsed .nav-count,
+html.sidebar-collapsed .nav-group-label,
+html.sidebar-collapsed .brand-wordmark,
+html.sidebar-collapsed .nav-footer-text {
+  display: none;
+}
+html.sidebar-collapsed .nav-row {
+  justify-content: center;
+  gap: 0;
+}
+html.sidebar-collapsed .nav-brand {
+  justify-content: center;
+}
+
+/* The collapse toggle shows whichever icon matches the current state. */
+.collapse-icon-collapsed {
+  display: none;
+}
+html.sidebar-collapsed .collapse-icon-expanded {
+  display: none;
+}
+html.sidebar-collapsed .collapse-icon-collapsed {
+  display: inline-flex;
+}
