@@ -120,6 +120,55 @@ export function compareVersionsDesc(a: AppVersion, b: AppVersion): number {
   return b.major - a.major || b.minor - a.minor || b.patch - a.patch;
 }
 
+// ── Grouped change lines (umbrella heading + sub-items) ──────────────────
+//
+// A change line can be a flat one-liner OR an umbrella heading with a bullet
+// list beneath it (e.g. "Activity feed bug fixes" → "Fixed comments on rounds",
+// "Fixed likes not working"). To avoid a schema change in this repo (migrations
+// live in Vestige-ios), the sub-items are encoded inside the existing `summary`
+// column as newline-separated lines: line 1 is the heading, every following
+// line is a bullet. A summary with no newline is exactly a flat line — fully
+// backward compatible with every existing row.
+
+export type ParsedChangeSummary = { heading: string; items: string[] };
+
+/** Strip a single leading bullet marker ("- ", "* ", "• ") from a line. */
+function stripBullet(line: string): string {
+  return line.replace(/^\s*[-*•]\s+/, "").trim();
+}
+
+/**
+ * Split a stored summary into its heading + optional bullet items. Forgiving on
+ * read (any line after the first becomes an item, dash or not); canonical on
+ * write (see {@link serializeChangeSummary}).
+ */
+export function parseChangeSummary(summary: string): ParsedChangeSummary {
+  const lines = summary.split("\n");
+  const heading = stripBullet(lines[0] ?? "");
+  const items = lines
+    .slice(1)
+    .map((l) => stripBullet(l))
+    .filter((l) => l.length > 0);
+  return { heading, items };
+}
+
+/** True when a summary carries a sub-list (heading + ≥1 item). */
+export function hasChangeItems(summary: string): boolean {
+  return parseChangeSummary(summary).items.length > 0;
+}
+
+/**
+ * Re-encode a heading + items back into the storage convention. Items are
+ * trimmed + emptied-dropped; a list with no items collapses to just the
+ * heading, so toggling a line back to flat stores a clean one-liner.
+ */
+export function serializeChangeSummary(heading: string, items: string[]): string {
+  const cleanHeading = heading.trim();
+  const cleanItems = items.map((i) => i.trim()).filter((i) => i.length > 0);
+  if (cleanItems.length === 0) return cleanHeading;
+  return [cleanHeading, ...cleanItems.map((i) => `- ${i}`)].join("\n");
+}
+
 /** The current shipped version = highest released. Null when none released. */
 export function currentVersion(versions: AppVersion[]): AppVersion | null {
   const released = versions

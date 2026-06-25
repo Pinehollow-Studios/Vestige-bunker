@@ -2,7 +2,16 @@
 
 import Link from "next/link";
 import { useMemo, useRef, useState, useTransition } from "react";
-import { ExternalLink, Link2, Plus, Tag, Trash2, X } from "lucide-react";
+import {
+  CornerDownRight,
+  ExternalLink,
+  Link2,
+  ListPlus,
+  Plus,
+  Tag,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +37,8 @@ import {
   CHANGE_KINDS,
   type ChipTone,
   type LinkedFeedback,
+  parseChangeSummary,
+  serializeChangeSummary,
 } from "../types";
 import { FeedbackLinkPicker } from "./FeedbackLinkPicker";
 import { ReleaseDialog } from "./ReleaseDialog";
@@ -520,25 +531,59 @@ function ChangeLine({
   onLinked: (report: FeedbackSearchRow) => void;
   onUnlinked: () => void;
 }) {
-  const [summary, setSummary] = useState(change.summary);
+  const parsed = parseChangeSummary(change.summary);
+  const [heading, setHeading] = useState(parsed.heading);
+  const [items, setItems] = useState<string[]>(parsed.items);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  function saveSummary() {
-    const text = summary.trim();
-    if (!text || text === change.summary) {
-      setSummary(change.summary);
-      return;
-    }
+  // Persist the heading + sub-items back through the existing `summary` column
+  // (serialized via the umbrella convention — see types.ts). No-ops when the
+  // serialized value is unchanged so blur-without-edit costs nothing.
+  function persist(nextHeading: string, nextItems: string[]) {
+    const next = serializeChangeSummary(nextHeading, nextItems);
+    if (next === change.summary || nextHeading.trim() === "") return;
     startTransition(async () => {
-      const res = await updateChange(versionId, change.id, { summary: text });
+      const res = await updateChange(versionId, change.id, { summary: next });
       if (!res.ok) {
         toast.error(res.message);
-        setSummary(change.summary);
+        const reverted = parseChangeSummary(change.summary);
+        setHeading(reverted.heading);
+        setItems(reverted.items);
       } else {
-        onUpdated({ ...change, summary: text });
+        onUpdated({ ...change, summary: next });
       }
     });
+  }
+
+  function saveHeading() {
+    const h = heading.trim();
+    if (!h) {
+      setHeading(parseChangeSummary(change.summary).heading);
+      return;
+    }
+    persist(h, items);
+  }
+
+  function editItem(index: number, value: string) {
+    setItems((prev) => prev.map((it, i) => (i === index ? value : it)));
+  }
+
+  function addItem() {
+    setItems((prev) => [...prev, ""]);
+  }
+
+  function commitItem(index: number) {
+    // Drop the row if it was left blank; otherwise persist the edited list.
+    const next = items.filter((it, i) => !(i === index && it.trim() === ""));
+    if (next.length !== items.length) setItems(next);
+    persist(heading, next);
+  }
+
+  function removeItem(index: number) {
+    const next = items.filter((_, i) => i !== index);
+    setItems(next);
+    persist(heading, next);
   }
 
   function changeKind(kind: ChangeKind) {
@@ -591,14 +636,18 @@ function ChangeLine({
           ))}
         </select>
         <Input
-          value={summary}
-          onChange={(e) => setSummary(e.target.value)}
-          onBlur={saveSummary}
+          value={heading}
+          onChange={(e) => setHeading(e.target.value)}
+          onBlur={saveHeading}
           onKeyDown={(e) => {
             if (e.key === "Enter") (e.target as HTMLInputElement).blur();
           }}
           disabled={pending}
-          className="h-8 flex-1 border-transparent bg-transparent text-sm hover:border-rule/50 focus-visible:border-brand"
+          placeholder={items.length > 0 ? "Umbrella heading…" : "Describe what changed…"}
+          className={cn(
+            "h-8 flex-1 border-transparent bg-transparent text-sm hover:border-rule/50 focus-visible:border-brand",
+            items.length > 0 && "font-medium",
+          )}
         />
         {!linked && !pickerOpen && (
           <button
@@ -620,6 +669,48 @@ function ChangeLine({
         >
           <Trash2 className="size-3.5" />
         </button>
+      </div>
+
+      {/* Sub-items — the umbrella list (e.g. "Activity feed bug fixes" → … ). */}
+      <div className="ml-[104px] space-y-1.5">
+          {items.length > 0 && (
+            <ul className="space-y-1 border-l border-rule/50 pl-3">
+              {items.map((item, i) => (
+                <li key={i} className="flex items-center gap-1.5">
+                  <CornerDownRight aria-hidden className="size-3 shrink-0 text-ink-3" />
+                  <Input
+                    value={item}
+                    onChange={(e) => editItem(i, e.target.value)}
+                    onBlur={() => commitItem(i)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    }}
+                    disabled={pending}
+                    placeholder="Sub-item…"
+                    className="h-7 flex-1 border-transparent bg-transparent text-[13px] text-ink-2 hover:border-rule/50 focus-visible:border-brand"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeItem(i)}
+                    disabled={pending}
+                    className="shrink-0 rounded p-1 text-ink-3 transition-colors hover:text-alert disabled:opacity-50"
+                    aria-label="Remove sub-item"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button
+            type="button"
+            onClick={addItem}
+            disabled={pending}
+            className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-ink-3 transition-colors hover:text-brand disabled:opacity-50"
+          >
+            <ListPlus className="size-3" />
+            {items.length > 0 ? "Add sub-item" : "Break into a list"}
+          </button>
       </div>
 
       {linked && (

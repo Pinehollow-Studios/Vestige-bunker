@@ -49,7 +49,14 @@ export const getDashboardCounts = cache(async (): Promise<DashboardCounts> => {
     announcementsRes,
     changelogRes,
   ] = await Promise.all([
-    supabase.rpc("admin_list_verification_queue"),
+    // Public user lists awaiting the verified stamp. The old
+    // admin_list_verification_queue() RPC was dropped (PII-drop migration), so
+    // count the table directly through service-role.
+    adminRead
+      .from("user_lists")
+      .select("id", { count: "exact", head: true })
+      .not("verification_requested_at", "is", null)
+      .is("verified_at", null),
     supabase
       .from("curated_lists")
       .select("id", { count: "exact", head: true })
@@ -85,7 +92,7 @@ export const getDashboardCounts = cache(async (): Promise<DashboardCounts> => {
   ]);
 
   return {
-    verification: Array.isArray(queueRes.data) ? queueRes.data.length : 0,
+    verification: queueRes.count ?? 0,
     curated: curatedRes.count ?? 0,
     courses: coursesRes.count ?? 0,
     feedback: feedbackRes.count ?? 0,

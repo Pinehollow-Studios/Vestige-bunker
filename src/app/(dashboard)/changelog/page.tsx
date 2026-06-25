@@ -19,10 +19,12 @@ import {
 export const dynamic = "force-dynamic";
 
 /**
- * Changelog — the full, read-only release log: every version with its change
- * lines, newest first, in one scroll (what a viewer reads). A prominent banner
- * derives the current shipped version (highest released). Each version links to
- * its focused View page; an Edit affordance jumps straight to the editor.
+ * Changelog — the full release log as a vertical timeline, newest first. A
+ * prominent banner derives the current shipped version; a draft banner jumps
+ * straight back into the version in development. Each version node carries its
+ * change lines (which may be umbrella headings with bullet sub-lists). This is
+ * the surface Jack reads to see what's being built, so it's styled to read like
+ * a polished public release log, not a raw table.
  *
  * Forward-compat: a missing-relation error (tables not deployed) renders the
  * unconfigured state rather than throwing.
@@ -97,16 +99,17 @@ export default async function ChangelogPage() {
 
       {notConfigured && <NotConfigured />}
 
-      {!notConfigured && current && <CurrentVersionBanner version={current} />}
-
-      {!notConfigured && activeDraft && <ActiveDraftBanner version={activeDraft} />}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {!notConfigured && current && <CurrentVersionBanner version={current} />}
+        {!notConfigured && activeDraft && <ActiveDraftBanner version={activeDraft} />}
+      </div>
 
       {!versionsRes.error && versions.length === 0 && <EmptyState />}
 
       {!notConfigured && versions.length > 0 && (
-        <div className="space-y-4">
+        <ol className="relative space-y-5 before:absolute before:bottom-3 before:left-[7px] before:top-3 before:w-px before:bg-rule/45">
           {versions.map((version) => (
-            <VersionSection
+            <VersionNode
               key={version.id}
               version={version}
               changes={changesByVersion.get(version.id) ?? []}
@@ -114,7 +117,7 @@ export default async function ChangelogPage() {
               isCurrent={current?.id === version.id}
             />
           ))}
-        </div>
+        </ol>
       )}
     </div>
   );
@@ -122,28 +125,30 @@ export default async function ChangelogPage() {
 
 function CurrentVersionBanner({ version }: { version: AppVersion }) {
   return (
-    <div className="flex items-center gap-4 rounded-2xl border border-brand/30 bg-brand/5 p-5">
-      <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand/15 text-brand">
-        <Rocket className="size-5" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-brand">
-          Current version
-        </p>
-        <p className="font-hero text-2xl leading-tight text-ink">
-          {version.version}
-          {version.title && (
-            <span className="ml-2 align-middle text-sm font-normal text-ink-2">
-              {version.title}
-            </span>
-          )}
-        </p>
-      </div>
-      {version.released_at && (
-        <span className="shrink-0 text-xs text-ink-3">
-          shipped {formatDate(version.released_at)}
+    <div className="relative overflow-hidden rounded-2xl border border-brand/30 bg-brand/[0.06] p-5">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-8 -top-10 size-32 rounded-full bg-brand/10 blur-2xl"
+      />
+      <div className="relative flex items-center gap-4">
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand/15 text-brand">
+          <Rocket className="size-5" />
         </span>
-      )}
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-brand">
+            Current version
+          </p>
+          <p className="font-hero text-2xl leading-tight text-ink">{version.version}</p>
+          {version.title && (
+            <p className="truncate text-sm text-ink-2">{version.title}</p>
+          )}
+        </div>
+        {version.released_at && (
+          <span className="shrink-0 self-start text-xs text-ink-3">
+            {formatDate(version.released_at)}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -153,33 +158,29 @@ function ActiveDraftBanner({ version }: { version: AppVersion }) {
   return (
     <Link
       href={`/changelog/${version.id}?mode=edit`}
-      className="flex items-center gap-4 rounded-2xl border border-amber/40 bg-amber/10 p-4 transition-colors hover:bg-amber/15"
+      className="group flex items-center gap-4 rounded-2xl border border-amber/40 bg-amber/[0.08] p-5 transition-colors hover:bg-amber/[0.13]"
     >
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-amber/15 text-amber">
+      <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-amber/15 text-amber">
         <Hammer className="size-5" />
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-amber">
           In development
         </p>
-        <p className="font-heading text-base leading-tight text-ink">
-          v{version.version}
-          {version.title && (
-            <span className="ml-2 align-middle text-sm font-normal text-ink-2">
-              {version.title}
-            </span>
-          )}
-        </p>
+        <p className="font-hero text-2xl leading-tight text-ink">{version.version}</p>
+        {version.title && (
+          <p className="truncate text-sm text-ink-2">{version.title}</p>
+        )}
       </div>
-      <span className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-amber">
-        Continue editing
-        <ArrowRight aria-hidden className="size-3.5" />
+      <span className="inline-flex shrink-0 items-center gap-1 self-start text-xs font-semibold text-amber">
+        Continue
+        <ArrowRight aria-hidden className="size-3.5 transition-transform group-hover:translate-x-0.5" />
       </span>
     </Link>
   );
 }
 
-function VersionSection({
+function VersionNode({
   version,
   changes,
   linkedFeedback,
@@ -190,48 +191,75 @@ function VersionSection({
   linkedFeedback: Record<string, LinkedFeedback>;
   isCurrent: boolean;
 }) {
-  return (
-    <section className="space-y-4 rounded-xl glass-panel p-5">
-      <header className="flex flex-wrap items-start gap-3">
-        <div className="min-w-0 flex-1 space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href={`/changelog/${version.id}`}
-              className="font-heading text-lg font-semibold leading-snug text-ink transition-colors hover:text-brand"
-            >
-              v{version.version}
-            </Link>
-            {isCurrent && (
-              <span className="inline-flex items-center rounded-full border border-brand/35 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-brand">
-                Current
-              </span>
-            )}
-            <span
-              className={cn(
-                "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-                versionStatusBadgeClasses(version.status),
-              )}
-            >
-              {VERSION_STATUS_LABELS[version.status]}
-            </span>
-            {version.released_at && (
-              <span className="text-xs text-ink-3">{formatDate(version.released_at)}</span>
-            )}
-          </div>
-          {version.title && <p className="text-sm text-ink-2">{version.title}</p>}
-          {version.summary && <p className="text-xs text-ink-3">{version.summary}</p>}
-        </div>
-        <Link
-          href={`/changelog/${version.id}?mode=edit`}
-          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-rule/60 px-2 py-1 text-[11px] text-ink-3 transition-colors hover:border-brand/40 hover:text-brand"
-        >
-          <Pencil aria-hidden className="size-3" />
-          Edit
-        </Link>
-      </header>
+  const fixedCount = changes.filter((c) => c.kind === "fixed").length;
+  const nodeTone =
+    version.status === "released" ? "border-brand bg-brand" : "border-amber bg-amber";
 
-      <ChangeLinesView changes={changes} linkedFeedback={linkedFeedback} />
-    </section>
+  return (
+    <li className="relative pl-9">
+      {/* Timeline node. */}
+      <span
+        aria-hidden
+        className={cn(
+          "absolute left-0 top-1.5 size-3.5 rounded-full border-2 ring-4 ring-paper",
+          nodeTone,
+        )}
+      />
+
+      <section className="space-y-4 rounded-xl glass-panel p-5">
+        <header className="flex flex-wrap items-start gap-3">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={`/changelog/${version.id}`}
+                className="font-hero text-xl leading-none text-ink transition-colors hover:text-brand"
+              >
+                {version.version}
+              </Link>
+              {isCurrent && (
+                <span className="inline-flex items-center rounded-full border border-brand/35 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-brand">
+                  Current
+                </span>
+              )}
+              <span
+                className={cn(
+                  "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                  versionStatusBadgeClasses(version.status),
+                )}
+              >
+                {VERSION_STATUS_LABELS[version.status]}
+              </span>
+              {version.released_at && (
+                <span className="text-xs text-ink-3">{formatDate(version.released_at)}</span>
+              )}
+            </div>
+            {version.title && <p className="text-sm font-medium text-ink-2">{version.title}</p>}
+            {version.summary && <p className="text-xs text-ink-3">{version.summary}</p>}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-[11px] text-ink-3">
+              <span>
+                <span className="tabular-nums text-ink-2">{changes.length}</span>{" "}
+                {changes.length === 1 ? "change" : "changes"}
+              </span>
+              {fixedCount > 0 && (
+                <span className="text-amber">
+                  <span className="tabular-nums">{fixedCount}</span> fixed
+                </span>
+              )}
+            </div>
+          </div>
+          <Link
+            href={`/changelog/${version.id}?mode=edit`}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-rule/60 px-2 py-1 text-[11px] text-ink-3 transition-colors hover:border-brand/40 hover:text-brand"
+          >
+            <Pencil aria-hidden className="size-3" />
+            Edit
+          </Link>
+        </header>
+
+        {changes.length > 0 && <div className="border-t border-rule/40 pt-4" />}
+        <ChangeLinesView changes={changes} linkedFeedback={linkedFeedback} />
+      </section>
+    </li>
   );
 }
 

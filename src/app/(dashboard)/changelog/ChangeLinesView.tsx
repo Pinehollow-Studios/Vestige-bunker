@@ -7,6 +7,7 @@ import {
   type LinkedFeedback,
   CHANGE_KINDS,
   CHANGE_KIND_LABELS,
+  parseChangeSummary,
 } from "./types";
 
 const KIND_HEADING: Record<ChangeKind, string> = {
@@ -66,31 +67,51 @@ export function ChangeLinesView({
               const report = line.feedback_report_id
                 ? linkedFeedback?.[line.feedback_report_id]
                 : null;
+              const { heading, items } = parseChangeSummary(line.summary);
               return (
                 <li
                   key={line.id}
-                  className="flex items-start gap-2 text-sm leading-snug text-ink"
+                  className="space-y-1.5 text-sm leading-snug text-ink"
                 >
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "mt-[7px] inline-block size-1 shrink-0 rounded-full",
-                      KIND_DOT[group.kind],
-                    )}
-                  />
-                  <span className="min-w-0 flex-1">
-                    {line.summary}
-                    {line.feedback_report_id && (
-                      <Link
-                        href={`/feedback/${line.feedback_report_id}`}
-                        title={report?.body ?? undefined}
-                        className="ml-2 inline-flex items-center gap-1 rounded-full border border-brand/30 px-1.5 py-0.5 align-middle text-[10px] font-medium text-brand transition-colors hover:bg-brand/10"
-                      >
-                        <Tag aria-hidden className="size-2.5" />
-                        {report?.kind ?? "report"}
-                      </Link>
-                    )}
-                  </span>
+                  <div className="flex items-start gap-2">
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "mt-[7px] inline-block size-1 shrink-0 rounded-full",
+                        KIND_DOT[group.kind],
+                      )}
+                    />
+                    <span className={cn("min-w-0 flex-1", items.length > 0 && "font-medium")}>
+                      {heading}
+                      {line.feedback_report_id && (
+                        <Link
+                          href={`/feedback/${line.feedback_report_id}`}
+                          title={report?.body ?? undefined}
+                          className="ml-2 inline-flex items-center gap-1 rounded-full border border-brand/30 px-1.5 py-0.5 align-middle text-[10px] font-medium text-brand transition-colors hover:bg-brand/10"
+                        >
+                          <Tag aria-hidden className="size-2.5" />
+                          {report?.kind ?? "report"}
+                        </Link>
+                      )}
+                    </span>
+                  </div>
+                  {items.length > 0 && (
+                    <ul className="ml-4 space-y-1 border-l border-rule/50 pl-3.5">
+                      {items.map((item, i) => (
+                        <li key={i} className="flex items-start gap-2 text-[13px] text-ink-2">
+                          <span
+                            aria-hidden
+                            className={cn(
+                              "mt-[7px] inline-block size-1 shrink-0 rounded-full",
+                              KIND_DOT[group.kind],
+                              "opacity-60",
+                            )}
+                          />
+                          <span className="min-w-0 flex-1">{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               );
             })}
