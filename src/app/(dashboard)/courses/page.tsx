@@ -5,6 +5,7 @@ import { TableToolbar, TableSelect, FilterChips } from "@/components/admin/table
 import { TablePagination } from "@/components/admin/table/TablePagination";
 import type { SortDir } from "@/components/admin/table/DataTable";
 import { createClient } from "@/lib/supabase/server";
+import { tryCreateServiceClient } from "@/lib/supabase/admin";
 import { LAYOUT_LABELS, TIER_LABELS, type CourseLayout, type CourseTier } from "./types";
 import { CoursesTable, type CourseTableRow } from "./CoursesTable";
 
@@ -61,6 +62,29 @@ export default async function CoursesPage(props: { searchParams: SearchParams })
   );
 }
 
+/**
+ * Course ids that have ≥1 approved, processed community photo (kind=coursePhoto)
+ * in the active env. `public.photos` has no admin SELECT policy, so this reads
+ * through service-role; an absent key / pre-migration env → empty set (a course
+ * just falls back to its editorial-cover state). Lets the grid count an approved
+ * community photo as the course having a hero — the fix for "approved photos
+ * don't show as the hero in the dashboard".
+ */
+async function coursesWithCommunityPhotos(): Promise<Set<string>> {
+  const svc = await tryCreateServiceClient();
+  if (!svc) return new Set();
+  const { data, error } = await svc
+    .from("photos")
+    .select("course_id")
+    .eq("kind", "coursePhoto")
+    .eq("moderation_state", "approved")
+    .is("deleted_at", null)
+    .not("variants", "is", null)
+    .not("course_id", "is", null);
+  if (error || !data) return new Set();
+  return new Set((data as Array<{ course_id: string | null }>).map((r) => r.course_id).filter((v): v is string => !!v));
+}
+
 // ── Landing: county grid ───────────────────────────────────────────────
 async function CountyLanding({
   supabase,
@@ -69,17 +93,20 @@ async function CountyLanding({
   supabase: Awaited<ReturnType<typeof createClient>>;
   initialQuery: string;
 }) {
-  const [aggRes, countiesRes] = await Promise.all([
-    supabase.from("courses").select("county_id, hero_photo_storage_key"),
+  const [aggRes, countiesRes, community] = await Promise.all([
+    supabase.from("courses").select("id, county_id, hero_photo_storage_key"),
     supabase.from("counties").select("id, name").order("name", { ascending: true }),
+    coursesWithCommunityPhotos(),
   ]);
 
   const stats = new Map<string, { total: number; missingPhoto: number }>();
-  for (const r of (aggRes.data as Array<{ county_id: string | null; hero_photo_storage_key: string | null }> | null) ?? []) {
+  for (const r of (aggRes.data as Array<{ id: string; county_id: string | null; hero_photo_storage_key: string | null }> | null) ?? []) {
     const key = r.county_id ?? NO_COUNTY;
     const s = stats.get(key) ?? { total: 0, missingPhoto: 0 };
     s.total += 1;
-    if (!r.hero_photo_storage_key) s.missingPhoto += 1;
+    // A course "has a photo" if it has an editorial cover OR an approved
+    // community photo — so approving a contribution clears the gap.
+    if (!r.hero_photo_storage_key && !community.has(r.id)) s.missingPhoto += 1;
     stats.set(key, s);
   }
 
@@ -219,13 +246,14 @@ async function TableView({
     .order(SORT_COLUMN[sort], { ascending: dir === "asc" })
     .range(offset, offset + PAGE_SIZE - 1);
 
-  const [listRes, stylesRes, countiesRes, countyNameRes, ...gapCountResults] = await Promise.all([
+  const [listRes, stylesRes, countiesRes, countyNameRes, community, ...gapCountResults] = await Promise.all([
     listPromise,
     supabase.rpc("distinct_course_styles"),
     supabase.from("counties").select("id,name").order("name", { ascending: true }),
     county !== "all" && county !== NO_COUNTY
       ? supabase.from("counties").select("name").eq("id", county).maybeSingle()
       : Promise.resolve({ data: null }),
+    coursesWithCommunityPhotos(),
     ...GAP_TYPES.map((g) => gapCountQuery(g)),
   ]);
 
@@ -254,7 +282,7 @@ async function TableView({
     layout: (r.type ?? "primary18") as CourseLayout,
     par: r.par,
     yards: r.yards,
-    hasPhoto: Boolean(r.hero_photo_storage_key),
+    hasPhoto: Boolean(r.hero_photo_storage_key) || community.has(r.id),
     hasDescription: Boolean(r.description && String(r.description).trim()),
     hasStats: r.par != null && r.yards != null,
     lastEditedByName: r.last_edited_by_admin_id ? (adminNames[r.last_edited_by_admin_id] ?? null) : null,

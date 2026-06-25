@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { courseCoverURL } from "@/lib/storage";
+import { activeStorageBaseUrl, tryCreateServiceClient } from "@/lib/supabase/admin";
+import { courseCoverURL, photosRenderedURL } from "@/lib/storage";
 import { CourseEditor } from "./CourseEditor";
+import type { ManagedPhoto } from "./CoursePhotoManager";
 import {
   type CourseDetailRow,
   type CourseLayout,
@@ -99,7 +101,88 @@ export default async function CourseDetailPage(props: { params: RouteParams }) {
 
   const cover = courseCoverURL(row.hero_photo_storage_key);
 
-  return <CourseEditor row={row} coverURL={cover} styles={styles} />;
+  // Community gallery (kind='coursePhoto') lives in the active env's `photos`
+  // table — uploaded by real users, distinct from the editorial cover. No admin
+  // SELECT policy, so read via service-role; absent key → empty (graceful).
+  const { approved, pending } = await loadCommunityPhotos(id);
+  // What users actually see leading the carousel: editorial cover, else the
+  // top-ordered approved community photo.
+  const effectiveCoverURL = cover ?? approved[0]?.thumbUrl ?? null;
+
+  return (
+    <CourseEditor
+      row={row}
+      coverURL={cover}
+      effectiveCoverURL={effectiveCoverURL}
+      approvedPhotos={approved}
+      pendingPhotos={pending}
+      styles={styles}
+    />
+  );
+}
+
+async function loadCommunityPhotos(
+  courseId: string,
+): Promise<{ approved: ManagedPhoto[]; pending: ManagedPhoto[] }> {
+  const svc = await tryCreateServiceClient();
+  if (!svc) return { approved: [], pending: [] };
+
+  const baseUrl = await activeStorageBaseUrl();
+
+  // Order by the admin sort index when the ordering migration is applied; fall
+  // back to created_at on envs where `course_sort_index` doesn't exist yet, so
+  // the manager still lists photos before the migration lands.
+  const base = () =>
+    svc
+      .from("photos")
+      .select("id, moderation_state, variants, uploader_user_id, created_at")
+      .eq("course_id", courseId)
+      .eq("kind", "coursePhoto")
+      .is("deleted_at", null)
+      .in("moderation_state", ["approved", "pending"])
+      .not("variants", "is", null);
+
+  let { data, error } = await base()
+    .order("course_sort_index", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: false });
+  if (error) {
+    ({ data, error } = await base().order("created_at", { ascending: false }));
+  }
+  // `coursePhoto` enum may not exist on this env yet → empty, not throw.
+  if (error || !data) return { approved: [], pending: [] };
+
+  type PhotoRow = {
+    id: string;
+    moderation_state: string;
+    variants: { thumb_storage_key?: string; medium_storage_key?: string } | null;
+    uploader_user_id: string | null;
+    created_at: string;
+  };
+  const rows = data as PhotoRow[];
+
+  const uploaderIds = Array.from(
+    new Set(rows.map((r) => r.uploader_user_id).filter((v): v is string => !!v)),
+  );
+  const names: Record<string, string> = {};
+  if (uploaderIds.length > 0) {
+    const { data: users } = await svc.from("users").select("id, display_name, username").in("id", uploaderIds);
+    for (const u of (users as Array<{ id: string; display_name: string | null; username: string | null }> | null) ?? []) {
+      names[u.id] = u.display_name || u.username || "A golfer";
+    }
+  }
+
+  const toManaged = (r: PhotoRow): ManagedPhoto => ({
+    id: r.id,
+    state: r.moderation_state as ManagedPhoto["state"],
+    thumbUrl: photosRenderedURL(r.variants?.medium_storage_key ?? r.variants?.thumb_storage_key, baseUrl),
+    uploaderName: r.uploader_user_id ? (names[r.uploader_user_id] ?? null) : null,
+    createdAt: r.created_at,
+  });
+
+  return {
+    approved: rows.filter((r) => r.moderation_state === "approved").map(toManaged),
+    pending: rows.filter((r) => r.moderation_state === "pending").map(toManaged),
+  };
 }
 
 function unwrapJoin<T>(value: unknown): T | null {

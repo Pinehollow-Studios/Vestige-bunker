@@ -19,6 +19,7 @@ import { CoursePreviewContent } from "./CoursePreview";
 import { useFormAutosave } from "@/lib/hooks/useFormAutosave";
 import { removeCourseCover, updateCourse, uploadCourseCover } from "../actions";
 import { CoverCropDialog } from "./CoverCropDialog";
+import { CoursePhotoManager, type ManagedPhoto } from "./CoursePhotoManager";
 import { PolygonPreview } from "./PolygonPreview";
 import { StylePicker } from "./StylePicker";
 import {
@@ -45,10 +46,18 @@ type CourseForm = {
 export function CourseEditor({
   row,
   coverURL,
+  effectiveCoverURL,
+  approvedPhotos,
+  pendingPhotos,
   styles,
 }: {
   row: CourseDetailRow;
+  /** The editorial cover (course-covers bucket), if uploaded. */
   coverURL: string | null;
+  /** What leads the carousel in-app: editorial cover ?? top community photo. */
+  effectiveCoverURL: string | null;
+  approvedPhotos: ManagedPhoto[];
+  pendingPhotos: ManagedPhoto[];
   styles: string[];
 }) {
   const { values, setField, state } = useFormAutosave<CourseForm>(
@@ -66,8 +75,8 @@ export function CourseEditor({
   );
 
   const checks: ReadinessCheck[] = [
-    coverURL
-      ? { state: "ok", label: "Hero photo" }
+    effectiveCoverURL
+      ? { state: "ok", label: coverURL ? "Hero photo" : "Hero photo (community)" }
       : { state: "warn", label: "No hero photo", hint: "Courses read better with a photo." },
     values.description.trim()
       ? { state: "ok", label: "Description set" }
@@ -86,7 +95,7 @@ export function CourseEditor({
           name={row.name}
           club={row.club_name}
           county={row.county_name}
-          coverURL={coverURL}
+          coverURL={effectiveCoverURL}
           description={values.description}
           par={values.par}
           yards={values.yards}
@@ -126,8 +135,23 @@ export function CourseEditor({
       }
     >
       {/* Essentials: photo + the editorial content users actually see */}
-      <EditorSection title="Hero photo" hint="16:9 — pick any photo, the cropper opens to frame it.">
+      <EditorSection
+        title="Hero photo"
+        hint="The official cover. 16:9 — pick any photo, the cropper opens to frame it. Leads the app carousel."
+      >
         <CoverEditor row={row} coverURL={coverURL} />
+      </EditorSection>
+
+      <EditorSection
+        title="Community photos"
+        hint="Golfer-contributed photos that follow the cover in the app. Approve, remove, or reorder — the top one is the hero when there's no cover."
+      >
+        <CoursePhotoManager
+          courseId={row.id}
+          hasEditorialCover={Boolean(coverURL)}
+          initialApproved={approvedPhotos}
+          initialPending={pendingPhotos}
+        />
       </EditorSection>
 
       <EditorSection title="Editorial" hint="What users see on the course detail sheet.">
