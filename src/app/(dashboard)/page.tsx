@@ -1,28 +1,356 @@
+import { Suspense } from "react";
 import Link from "next/link";
+import {
+  Images,
+  Megaphone,
+  MessageSquareWarning,
+  Rocket,
+  Sparkles,
+  type LucideIcon,
+} from "lucide-react";
 import { OverviewCard, PreviewList, StatusBreakdown } from "@/components/admin/OverviewCard";
-import { SectionHeader } from "@/components/admin/SectionHeader";
-import { StatsStrip, type Stat } from "@/components/admin/StatsStrip";
+import { Sparkline } from "@/components/admin/analytics/viz";
+import { Skeleton } from "@/components/admin/Skeleton";
 import { createClient } from "@/lib/supabase/server";
 import { tryCreateServiceClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
-import { TOOL_GROUPS } from "@/lib/admin/tools";
+import { getDailyActivity, getOverview } from "@/lib/analytics/queries";
 import { statusFor, type CuratedListStatus } from "./curated/types";
-import {
-  type AppVersion,
-  currentVersion,
-  VERSION_STATUS_LABELS,
-} from "./changelog/types";
+import { currentVersion, VERSION_STATUS_LABELS, type AppVersion } from "./changelog/types";
 
 export const dynamic = "force-dynamic";
 
-type ListQueueRow = {
-  list_id: string;
-  list_name: string;
-  owner_username: string;
-  course_count: number;
-  verification_requested_at: string;
-};
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const isoMsAgo = (ms: number) => new Date(Date.now() - ms).toISOString();
 
+/**
+ * Overview — a balanced digest + command center. The header (with the doctrine
+ * one-liner) + quick actions paint instantly; the three data sections — Pulse,
+ * Needs you, Live & shipped — stream in behind their own Suspense boundaries so
+ * the page never blocks on the slowest query.
+ */
+export default async function OverviewPage() {
+  await requireAdmin();
+  return (
+    <div className="mx-auto max-w-6xl space-y-7">
+      <Header />
+      <QuickActions />
+
+      <Section title="Pulse">
+        <Suspense fallback={<PulseSkeleton />}>
+          <PulseSection />
+        </Suspense>
+      </Section>
+
+      <Section title="Needs you">
+        <Suspense fallback={<CardsSkeleton n={4} />}>
+          <NeedsYouSection />
+        </Suspense>
+      </Section>
+
+      <Section title="Live & shipped">
+        <Suspense fallback={<CardsSkeleton n={3} />}>
+          <LiveShippedSection />
+        </Suspense>
+      </Section>
+    </div>
+  );
+}
+
+// ── Header + quick actions ─────────────────────────────────────────────
+function Header() {
+  return (
+    <header className="space-y-2">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">Dashboard</p>
+      <h1 className="font-display text-2xl font-semibold leading-tight tracking-tight text-ink sm:text-[1.75rem]">
+        Overview
+      </h1>
+      <p className="max-w-2xl text-sm italic leading-relaxed text-ink-3">
+        &ldquo;If you don&rsquo;t open one of our apps for a month, that is a successful outcome — for
+        both of us.&rdquo;{" "}
+        <span className="not-italic text-ink-3/70">— the Vestige doctrine</span>
+      </p>
+    </header>
+  );
+}
+
+function QuickActions() {
+  const actions: { href: string; label: string; icon: LucideIcon }[] = [
+    { href: "/curated", label: "New curated list", icon: Sparkles },
+    { href: "/announcements", label: "New announcement", icon: Megaphone },
+    { href: "/changelog", label: "Cut a release", icon: Rocket },
+    { href: "/feedback", label: "Triage feedback", icon: MessageSquareWarning },
+    { href: "/photos", label: "Moderate photos", icon: Images },
+  ];
+  return (
+    <div className="flex flex-wrap gap-2">
+      {actions.map((a) => {
+        const Icon = a.icon;
+        return (
+          <Link
+            key={a.href}
+            href={a.href}
+            className="inline-flex items-center gap-2 rounded-lg border border-rule/70 bg-paper-raised px-3 py-1.5 text-xs font-medium text-ink-2 transition-colors hover:border-brand/40 hover:text-ink"
+          >
+            <Icon aria-hidden className="size-3.5 text-ink-3" />
+            {a.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-3">
+      <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+// ── Pulse ──────────────────────────────────────────────────────────────
+async function PulseSection() {
+  const svc = await tryCreateServiceClient();
+  const supabase = await createClient();
+  const [overview, daily, curatedLiveRes] = await Promise.all([
+    svc ? getOverview(svc) : Promise.resolve(null),
+    svc ? getDailyActivity(svc) : Promise.resolve([]),
+    supabase
+      .from("curated_lists")
+      .select("id", { count: "exact", head: true })
+      .eq("is_archived", false)
+      .not("published_at", "is", null)
+      .lte("published_at", new Date().toISOString()),
+  ]);
+
+  if (!overview) {
+    return (
+      <div className="rounded-xl border border-dashed border-rule/70 bg-paper-sunken/40 px-4 py-6 text-center text-sm text-ink-3">
+        The platform pulse needs the analytics views + a service-role key for this environment.{" "}
+        <Link href="/analytics" className="text-brand hover:underline">
+          Open analytics
+        </Link>
+      </div>
+    );
+  }
+
+  const series = daily.slice(-30);
+  const signups = series.map((d) => ({ day: d.day, count: d.signups }));
+  const rounds = series.map((d) => ({ day: d.day, count: d.rounds }));
+  const active = series.map((d) => ({ day: d.day, count: d.active_users }));
+
+  const activeDeltaPct =
+    overview.active_prior_7d > 0
+      ? Math.round(((overview.active_7d - overview.active_prior_7d) / overview.active_prior_7d) * 100)
+      : null;
+
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <PulseCard
+        label="Total users"
+        value={overview.total_users}
+        delta={overview.users_7d > 0 ? { text: `+${overview.users_7d} this week`, dir: "up" } : undefined}
+        series={signups}
+      />
+      <PulseCard
+        label="Rounds logged"
+        value={overview.total_rounds}
+        delta={overview.rounds_7d > 0 ? { text: `+${overview.rounds_7d} this week`, dir: "up" } : undefined}
+        series={rounds}
+      />
+      <PulseCard
+        label="Active · 7 days"
+        value={overview.active_7d}
+        delta={
+          activeDeltaPct === null
+            ? undefined
+            : { text: `${activeDeltaPct >= 0 ? "+" : ""}${activeDeltaPct}% vs prior`, dir: activeDeltaPct >= 0 ? "up" : "down" }
+        }
+        series={active}
+      />
+      <PulseCard label="Live curated lists" value={curatedLiveRes.count ?? 0} />
+    </div>
+  );
+}
+
+function PulseCard({
+  label,
+  value,
+  delta,
+  series,
+}: {
+  label: string;
+  value: number;
+  delta?: { text: string; dir: "up" | "down" };
+  series?: { day: string; count: number }[];
+}) {
+  return (
+    <div className="flex flex-col rounded-xl glass-panel p-4">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-3">{label}</p>
+      <p className="mt-1.5 font-display text-3xl font-semibold leading-none tabular-nums text-ink">
+        {value.toLocaleString()}
+      </p>
+      {delta && (
+        <span
+          className={
+            "mt-2 inline-flex w-fit items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold " +
+            (delta.dir === "up" ? "bg-brand/15 text-brand" : "bg-alert/15 text-alert")
+          }
+        >
+          {delta.text}
+        </span>
+      )}
+      {series && series.length > 1 && series.some((d) => d.count > 0) && (
+        <div className="mt-auto pt-2">
+          <Sparkline data={series} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Needs you ──────────────────────────────────────────────────────────
+type FeedbackPreviewRow = {
+  id: string;
+  kind: string;
+  status: "new" | "triaged" | "inProgress" | "resolved" | "wontFix";
+  body: string;
+  created_at: string;
+};
+type SafeguardingRow = {
+  flag_id: string;
+  username: string | null;
+  display_name: string | null;
+  flag_kind: string;
+  triggered_at: string;
+};
+type PhotoRow = { id: string; exif_taken_at: string | null; created_at: string };
+type CrashRow = { id: string; level: string; message: string | null; last_seen: string; event_count: number };
+
+async function NeedsYouSection() {
+  const supabase = await createClient();
+  const adminRead = (await tryCreateServiceClient()) ?? supabase;
+  const sevenDaysAgo = isoMsAgo(WEEK_MS);
+
+  const [feedbackRes, photosCountRes, photosRes, safeguardingRes, crashesRes] = await Promise.all([
+    supabase
+      .from("feedback_reports")
+      .select("id, kind, status, body, created_at")
+      .in("status", ["new", "triaged", "inProgress"])
+      .order("created_at", { ascending: false })
+      .limit(8),
+    adminRead.from("photos").select("id", { count: "exact", head: true }).eq("moderation_state", "pending"),
+    adminRead
+      .from("photos")
+      .select("id, exif_taken_at, created_at")
+      .eq("moderation_state", "pending")
+      .order("created_at", { ascending: false })
+      .limit(4),
+    supabase
+      .rpc("admin_safeguarding_queue", { p_state_filter: "pending", p_limit: 6 })
+      .returns<SafeguardingRow[]>(),
+    supabase
+      .from("crash_reports")
+      .select("id, level, message, last_seen, event_count")
+      .gte("last_seen", sevenDaysAgo)
+      .order("last_seen", { ascending: false })
+      .limit(5),
+  ]);
+
+  const openFeedback = (feedbackRes.data as FeedbackPreviewRow[] | null) ?? [];
+  const photosPending = photosCountRes.count ?? 0;
+  const photos = (photosRes.data as PhotoRow[] | null) ?? [];
+  const safeguarding = (safeguardingRes.data as SafeguardingRow[] | null) ?? [];
+  const crashes = (crashesRes.data as CrashRow[] | null) ?? [];
+
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <OverviewCard
+        href="/feedback"
+        title="Feedback"
+        description="In-app reports. Triage in the live inbox — reply, stage, prioritise."
+        status="live"
+        count={openFeedback.length}
+        accent={openFeedback.length === 0 ? "Inbox clear" : "open"}
+        ctaLabel={openFeedback.length === 0 ? "Open inbox" : `Triage ${openFeedback.length}`}
+      >
+        <PreviewList
+          items={openFeedback.slice(0, 4).map((r) => ({
+            key: r.id,
+            primary: previewSentence(r.body),
+            secondary: `${feedbackKindLabel(r.kind)} · ${feedbackStatusLabel(r.status)}`,
+            trailing: relativeTime(r.created_at),
+          }))}
+          emptyLabel="No open feedback."
+        />
+      </OverviewCard>
+
+      <OverviewCard
+        href="/photos"
+        title="Photo moderation"
+        description="Round, avatar, and public course-gallery photos awaiting review."
+        status="live"
+        count={photosPending}
+        accent={photosPending === 0 ? "All clear" : "pending"}
+        ctaLabel={photosPending === 0 ? "Open queue" : `Moderate ${photosPending}`}
+      >
+        <PreviewList
+          items={photos.slice(0, 4).map((r) => ({
+            key: r.id,
+            primary: "Pending photo",
+            secondary: r.exif_taken_at ? `taken ${relativeTime(r.exif_taken_at)}` : "no exif",
+            trailing: relativeTime(r.created_at),
+          }))}
+          emptyLabel="Nothing to moderate."
+        />
+      </OverviewCard>
+
+      <OverviewCard
+        href="/safeguarding"
+        title="Safeguarding"
+        description="Heuristic flags from the round-log trigger. Keep the boards honest."
+        status="live"
+        count={safeguarding.length}
+        accent={safeguarding.length === 0 ? "All clear" : "open flags"}
+        ctaLabel={safeguarding.length === 0 ? "Open queue" : `Review ${safeguarding.length}`}
+      >
+        <PreviewList
+          items={safeguarding.slice(0, 4).map((r) => ({
+            key: r.flag_id,
+            primary: r.display_name?.trim() || `@${r.username ?? "unknown"}`,
+            secondary: safeguardingKindLabel(r.flag_kind),
+            trailing: relativeTime(r.triggered_at),
+          }))}
+          emptyLabel="No flags pending."
+        />
+      </OverviewCard>
+
+      <OverviewCard
+        href="/crashes"
+        title="Crashes"
+        description="Sentry events from the past 7 days. Full traces live in Sentry."
+        status="live"
+        count={crashes.length}
+        accent={crashes.length === 0 ? "Quiet" : "past 7 days"}
+        ctaLabel={crashes.length === 0 ? "Open queue" : `Open ${crashes.length}`}
+      >
+        <PreviewList
+          items={crashes.slice(0, 4).map((r) => ({
+            key: r.id,
+            primary: r.message ?? "(no message)",
+            secondary: `${r.level} · ${r.event_count} ${r.event_count === 1 ? "event" : "events"}`,
+            trailing: relativeTime(r.last_seen),
+          }))}
+          emptyLabel="No crashes in the past 7 days."
+        />
+      </OverviewCard>
+    </div>
+  );
+}
+
+// ── Live & shipped ─────────────────────────────────────────────────────
 type CuratedRow = {
   id: string;
   name: string;
@@ -32,127 +360,19 @@ type CuratedRow = {
   updated_at: string;
 };
 
-type FeedbackPreviewRow = {
-  id: string;
-  kind: "bug" | "dataError" | "featureRequest" | "general";
-  status: "new" | "triaged" | "inProgress" | "resolved" | "wontFix";
-  severity: "low" | "medium" | "high" | "critical" | null;
-  body: string;
-  created_at: string;
-};
-
-type SafeguardingRow = {
-  flag_id: string;
-  username: string | null;
-  display_name: string | null;
-  flag_kind: string;
-  triggered_at: string;
-  state: string;
-};
-
-type PhotoRow = {
-  id: string;
-  exif_taken_at: string | null;
-  created_at: string;
-  moderation_state: "pending" | "approved" | "rejected" | "flagged";
-};
-
-type CrashRow = {
-  id: string;
-  level: string;
-  message: string | null;
-  last_seen: string;
-  event_count: number;
-};
-
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-
-function isoMsAgo(ms: number): string {
-  return new Date(Date.now() - ms).toISOString();
-}
-
-export default async function OverviewPage() {
+async function LiveShippedSection() {
   const supabase = await createClient();
-  await requireAdmin();
-  // Several tables have no admin SELECT policy, so the session (anon) client
-  // only sees the admin's own slice — `photos` (own uploads), `users`
-  // (own/public/friends), `logged_rounds` (own), `friendships` (party). Read
-  // those through service-role (gated by the requireAdmin above) for true
-  // platform totals; fall back to the session client when unconfigured.
-  // `courses` (select_authenticated), `curated_lists`/`feedback_reports`/
-  // `crash_reports` (admin-gated policies) are fine on the session client.
-  const adminRead = (await tryCreateServiceClient()) ?? supabase;
-  const sevenDaysAgo = isoMsAgo(WEEK_MS);
-
-  const [
-    queueRes,
-    curatedRes,
-    feedbackRes,
-    safeguardingRes,
-    photosPendingCountRes,
-    photosRes,
-    crashesRes,
-    // Platform-health raw counts:
-    usersCountRes,
-    usersThisWeekRes,
-    roundsCountRes,
-    roundsThisWeekRes,
-    coursesCountRes,
-    coursesWithPolygonRes,
-    friendshipsCountRes,
-    versionsRes,
-  ] = await Promise.all([
-    supabase.rpc("admin_list_verification_queue"),
+  const [curatedRes, announcementsRes, versionsRes] = await Promise.all([
     supabase
       .from("curated_lists")
       .select("id,name,published_at,unpublished_at,is_archived,updated_at")
       .order("updated_at", { ascending: false }),
     supabase
-      .from("feedback_reports")
-      .select("id, kind, status, severity, body, created_at")
-      .in("status", ["new", "triaged", "inProgress"])
-      .order("created_at", { ascending: false })
-      .limit(8),
-    supabase
-      .rpc("admin_safeguarding_queue", { p_state_filter: "pending", p_limit: 6 })
-      .returns<SafeguardingRow[]>(),
-    adminRead
-      .from("photos")
+      .from("announcements")
       .select("id", { count: "exact", head: true })
-      .eq("moderation_state", "pending"),
-    adminRead
-      .from("photos")
-      .select("id, exif_taken_at, created_at, moderation_state")
-      .eq("moderation_state", "pending")
-      .order("created_at", { ascending: false })
-      .limit(6),
-    supabase
-      .from("crash_reports")
-      .select("id, level, message, last_seen, event_count")
-      .gte("last_seen", sevenDaysAgo)
-      .order("last_seen", { ascending: false })
-      .limit(5),
-    adminRead.from("users").select("id", { count: "exact", head: true }),
-    adminRead
-      .from("users")
-      .select("id", { count: "exact", head: true })
-      .gte("created_at", sevenDaysAgo),
-    adminRead.from("logged_rounds").select("id", { count: "exact", head: true }),
-    adminRead
-      .from("logged_rounds")
-      .select("id", { count: "exact", head: true })
-      .gte("created_at", sevenDaysAgo),
-    supabase.from("courses").select("id", { count: "exact", head: true }),
-    supabase
-      .from("courses")
-      .select("id", { count: "exact", head: true })
-      .not("polygon", "is", null),
-    adminRead
-      .from("friendships")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "accepted"),
-    // Changelog — every version (draft + released) for the current-version
-    // readout. Missing-table (pre-migration) returns null data → empty list.
+      .eq("is_archived", false)
+      .not("published_at", "is", null)
+      .lte("published_at", new Date().toISOString()),
     supabase
       .from("app_versions")
       .select("id, version, major, minor, patch, title, summary, status, released_at, created_at, updated_at")
@@ -161,332 +381,112 @@ export default async function OverviewPage() {
       .order("patch", { ascending: false }),
   ]);
 
-  const queue: ListQueueRow[] = (queueRes.data as ListQueueRow[] | null) ?? [];
-  const curated: CuratedRow[] = (curatedRes.data as CuratedRow[] | null) ?? [];
-  const openFeedback: FeedbackPreviewRow[] =
-    (feedbackRes.data as FeedbackPreviewRow[] | null) ?? [];
-  const safeguarding: SafeguardingRow[] =
-    (safeguardingRes.data as SafeguardingRow[] | null) ?? [];
-  const photos: PhotoRow[] = (photosRes.data as PhotoRow[] | null) ?? [];
-  const photosPending = photosPendingCountRes.count ?? 0;
-  const crashes: CrashRow[] = (crashesRes.data as CrashRow[] | null) ?? [];
-
-  const curatedByStatus = bucketCurated(curated);
-  const curatedDraftCount = curatedByStatus.draft + curatedByStatus.scheduled;
-
-  const usersTotal = usersCountRes.count ?? 0;
-  const usersThisWeek = usersThisWeekRes.count ?? 0;
-  const roundsTotal = roundsCountRes.count ?? 0;
-  const roundsThisWeek = roundsThisWeekRes.count ?? 0;
-  const coursesTotal = coursesCountRes.count ?? 0;
-  const coursesWithPolygon = coursesWithPolygonRes.count ?? 0;
-  const polygonCoveragePct =
-    coursesTotal > 0 ? Math.round((coursesWithPolygon / coursesTotal) * 100) : 0;
-  const friendshipsTotal = friendshipsCountRes.count ?? 0;
-
-  // One calm platform-health row — the underlying data shape at a glance.
-  const platformStats: Stat[] = [
-    {
-      key: "users",
-      label: "Total users",
-      value: usersTotal,
-      hint:
-        usersThisWeek === 0
-          ? "No sign-ups this week"
-          : usersThisWeek === 1
-            ? "1 new this week"
-            : `${usersThisWeek} new this week`,
-    },
-    {
-      key: "rounds",
-      label: "Rounds logged",
-      value: roundsTotal,
-      hint:
-        roundsThisWeek === 0
-          ? "None logged this week"
-          : `${roundsThisWeek} in the last 7 days`,
-    },
-    {
-      key: "courses",
-      label: "Courses in catalogue",
-      value: coursesTotal,
-      hint: `${polygonCoveragePct}% with polygons`,
-    },
-    {
-      key: "friendships",
-      label: "Accepted friendships",
-      value: friendshipsTotal,
-      hint:
-        friendshipsTotal === 0
-          ? "No friendships yet"
-          : "Mutual connections",
-    },
-  ];
-
-  const curatedPreview = curated.slice(0, 4).map((row) => ({
-    key: row.id,
-    primary: row.name,
-    secondary: prettyStatus(curatedStatus(row)),
-    trailing: relativeTime(row.updated_at),
-  }));
-
-  const versions: AppVersion[] = (versionsRes.data as AppVersion[] | null) ?? [];
+  const curated = (curatedRes.data as CuratedRow[] | null) ?? [];
+  const buckets = bucketCurated(curated);
+  const versions = (versionsRes.data as AppVersion[] | null) ?? [];
   const current = currentVersion(versions);
-  // The newest in-development version, if any (versions arrive newest-first).
   const activeDraft = versions.find((v) => v.status === "draft") ?? null;
-  const versionPreview = versions.slice(0, 4).map((v) => ({
-    key: v.id,
-    primary: `v${v.version}`,
-    secondary: v.title ?? VERSION_STATUS_LABELS[v.status],
-    trailing: v.released_at ? relativeTime(v.released_at) : "draft",
-  }));
+  const announcementsLive = announcementsRes.count ?? 0;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
-      <SectionHeader
-        eyebrow="Dashboard"
-        title="Overview"
-      />
-
-      <figure className="relative overflow-hidden rounded-2xl glass-panel px-6 py-8 sm:px-10 sm:py-10">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-60"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle at 12% 0%, color-mix(in oklab, var(--brand) 12%, transparent) 0%, transparent 55%)," +
-              "radial-gradient(circle at 88% 100%, color-mix(in oklab, var(--brand-soft) 8%, transparent) 0%, transparent 55%)",
-          }}
-        />
-        <span
-          aria-hidden
-          className="display-serif absolute left-3 top-1 select-none text-6xl leading-none text-brand/20 sm:left-5 sm:text-7xl"
-        >
-          &ldquo;
-        </span>
-        <blockquote className="relative">
-          <p className="display-serif text-balance text-xl font-semibold leading-snug tracking-[-0.01em] text-ink sm:text-[1.85rem] sm:leading-[1.25]">
-            If you don&rsquo;t open one of our apps for a month, that is a
-            successful outcome — for both of us.
-          </p>
-        </blockquote>
-        <figcaption className="relative mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">
-          The Vestige doctrine
-        </figcaption>
-      </figure>
-
-      <StatsStrip stats={platformStats} />
-
-      <section className="space-y-4">
-        <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">
-          Needs attention
-        </h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <OverviewCard
-            href="/feedback"
-            title="Feedback"
-            description="In-app reports awaiting acknowledgement. Reply, change status, tag, or block reporters."
-            status="live"
-            count={openFeedback.length}
-            accent={openFeedback.length === 0 ? "Inbox clear" : "open"}
-            ctaLabel={
-              openFeedback.length === 0 ? "Open inbox" : `Triage ${openFeedback.length}`
-            }
-          >
-            <PreviewList
-              items={openFeedback.slice(0, 4).map((row) => ({
-                key: row.id,
-                primary: previewSentence(row.body),
-                secondary: `${feedbackKindLabel(row.kind)} · ${feedbackStatusLabel(row.status)}`,
-                trailing: relativeTime(row.created_at),
-              }))}
-              emptyLabel="No open feedback reports."
-            />
-          </OverviewCard>
-
-          <OverviewCard
-            href="/photos"
-            title="Photo moderation"
-            description="Round photos awaiting moderation before they show on course pages."
-            status="live"
-            count={photosPending}
-            accent={photosPending === 0 ? "All clear" : "pending"}
-            ctaLabel={photosPending === 0 ? "Open queue" : `Moderate ${photosPending}`}
-          >
-            <PreviewList
-              items={photos.slice(0, 4).map((row) => ({
-                key: row.id,
-                primary: "Pending photo",
-                secondary: row.exif_taken_at ? `taken ${relativeTime(row.exif_taken_at)}` : "no exif",
-                trailing: relativeTime(row.created_at),
-              }))}
-              emptyLabel="No photos awaiting moderation."
-            />
-          </OverviewCard>
-
-          <OverviewCard
-            href="/safeguarding"
-            title="Safeguarding"
-            description="Heuristic flags from the round-log trigger. Triage to keep the leaderboards honest."
-            status="live"
-            count={safeguarding.length}
-            accent={safeguarding.length === 0 ? "All clear" : "open flags"}
-            ctaLabel={
-              safeguarding.length === 0 ? "Open queue" : `Review ${safeguarding.length}`
-            }
-          >
-            <PreviewList
-              items={safeguarding.slice(0, 4).map((row) => ({
-                key: row.flag_id,
-                primary:
-                  row.display_name && row.display_name.trim().length > 0
-                    ? row.display_name
-                    : `@${row.username ?? "unknown"}`,
-                secondary: safeguardingKindLabel(row.flag_kind),
-                trailing: relativeTime(row.triggered_at),
-              }))}
-              emptyLabel="No safeguarding flags pending."
-            />
-          </OverviewCard>
-
-          <OverviewCard
-            href="/crashes"
-            title="Crashes"
-            description="Sentry events from the past 7 days. Local index; full traces live in Sentry."
-            status="live"
-            count={crashes.length}
-            accent={crashes.length === 0 ? "Quiet" : "past 7 days"}
-            ctaLabel={crashes.length === 0 ? "Open queue" : `Open ${crashes.length}`}
-          >
-            <PreviewList
-              items={crashes.slice(0, 4).map((row) => ({
-                key: row.id,
-                primary: row.message ?? "(no message)",
-                secondary: `${row.level} · ${row.event_count} ${row.event_count === 1 ? "event" : "events"}`,
-                trailing: relativeTime(row.last_seen),
-              }))}
-              emptyLabel="No crashes in the past 7 days."
-            />
-          </OverviewCard>
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <OverviewCard
+        href="/curated"
+        title="Curated lists"
+        description="Editorial collections — title, bio, cover, courses, publish state."
+        status="live"
+        count={curated.length}
+        accent="lists total"
+        ctaLabel={`Open ${curated.length} ${curated.length === 1 ? "list" : "lists"}`}
+      >
+        <div className="space-y-3">
+          <StatusBreakdown
+            segments={[
+              { key: "live", label: "Live", count: buckets.live, tone: "live" },
+              { key: "scheduled", label: "Scheduled", count: buckets.scheduled, tone: "scheduled" },
+              { key: "draft", label: "Draft", count: buckets.draft, tone: "draft" },
+              { key: "expired", label: "Expired", count: buckets.expired, tone: "expired" },
+              { key: "archived", label: "Archived", count: buckets.archived, tone: "archived" },
+            ]}
+          />
+          <PreviewList
+            items={curated.slice(0, 4).map((r) => ({
+              key: r.id,
+              primary: r.name,
+              secondary: prettyStatus(curatedStatus(r)),
+              trailing: relativeTime(r.updated_at),
+            }))}
+            emptyLabel="No curated lists yet."
+          />
         </div>
-      </section>
+      </OverviewCard>
 
-      <section className="space-y-4">
-        <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">
-          Editorial
-        </h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <OverviewCard
-            href="/curated"
-            title="Curated lists"
-            description="Editorial collections — title, bio, cover, courses, publish state."
-            status="live"
-            count={curated.length}
-            accent="lists total"
-            ctaLabel={`Open ${curated.length} ${curated.length === 1 ? "list" : "lists"}`}
-          >
-            <div className="space-y-3">
-              <StatusBreakdown
-                segments={[
-                  { key: "live", label: "Live", count: curatedByStatus.live, tone: "live" },
-                  { key: "scheduled", label: "Scheduled", count: curatedByStatus.scheduled, tone: "scheduled" },
-                  { key: "draft", label: "Draft", count: curatedByStatus.draft, tone: "draft" },
-                  { key: "expired", label: "Expired", count: curatedByStatus.expired, tone: "expired" },
-                  { key: "archived", label: "Archived", count: curatedByStatus.archived, tone: "archived" },
-                ]}
-              />
-              <PreviewList items={curatedPreview} emptyLabel="No curated lists yet." />
-            </div>
-          </OverviewCard>
-
-          <OverviewCard
-            href="/announcements"
-            title="Announcements"
-            description="In-app pop-ups raised on launch. Author, target, and track seen / dismissed receipts."
-            status="live"
-            accent="messaging"
-            ctaLabel="Open announcements"
-          >
-            <p className="rounded-lg border border-dashed border-border/70 bg-paper-sunken/50 px-3 py-4 text-center text-xs text-ink-3">
-              {queue.length === 0
-                ? "No public lists are awaiting verification."
-                : `${queue.length} user ${queue.length === 1 ? "list is" : "lists are"} awaiting the verified stamp — see /lists.`}
-            </p>
-          </OverviewCard>
-
-          <OverviewCard
-            href="/changelog"
-            title="Changelog"
-            description="What shipped in each release — and which reported bugs each version tackled."
-            status="live"
-            accent={
-              activeDraft
-                ? `v${activeDraft.version} in development`
-                : current
-                  ? `v${current.version} current`
-                  : "no releases"
-            }
-            ctaLabel="Open changelog"
-          >
-            <PreviewList items={versionPreview} emptyLabel="No versions tracked yet." />
-          </OverviewCard>
-        </div>
-      </section>
-
-      {(queueRes.error || curatedRes.error || safeguardingRes.error) && (
-        <div className="rounded-xl border border-alert/40 bg-alert/10 p-4 text-xs text-alert">
-          Some live data failed to load.
-          {queueRes.error && <> Verification queue: {queueRes.error.message}.</>}
-          {curatedRes.error && <> Curated: {curatedRes.error.message}.</>}
-          {safeguardingRes.error && <> Safeguarding: {safeguardingRes.error.message}.</>}
-        </div>
-      )}
-
-      {curatedDraftCount > 0 && (
-        <p className="text-center text-[11px] text-ink-3">
-          {curatedDraftCount} curated list{curatedDraftCount === 1 ? "" : "s"} in
-          draft / scheduled — visit{" "}
-          <Link href="/curated" className="text-brand hover:underline">
-            /curated
-          </Link>{" "}
-          to publish.
+      <OverviewCard
+        href="/announcements"
+        title="Announcements"
+        description="In-app pop-ups raised on launch. Author, target, track receipts."
+        status="live"
+        count={announcementsLive}
+        accent={announcementsLive === 0 ? "none live" : "live now"}
+        ctaLabel="Open announcements"
+      >
+        <p className="rounded-lg border border-dashed border-border/70 bg-paper-sunken/50 px-3 py-4 text-center text-xs text-ink-3">
+          {announcementsLive === 0
+            ? "No announcements are live right now."
+            : `${announcementsLive} announcement${announcementsLive === 1 ? "" : "s"} live across targeted cohorts.`}
         </p>
-      )}
+      </OverviewCard>
 
-      <details className="group rounded-xl glass-panel p-5">
-        <summary className="cursor-pointer list-none text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-3 transition-colors hover:text-brand">
-          Developer tools
-        </summary>
-        <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
-          {TOOL_GROUPS.map((group) => (
-            <div key={group.key} className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-3">
-                {group.label}
-              </p>
-              <ul className="space-y-1">
-                {group.links.map((tool) => (
-                  <li key={tool.href}>
-                    <a
-                      href={tool.href}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[13px] text-ink-2 transition-colors hover:text-brand"
-                    >
-                      {tool.label}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </details>
+      <OverviewCard
+        href="/changelog"
+        title="Changelog"
+        description="What shipped in each release — and the bugs each version tackled."
+        status="live"
+        accent={
+          activeDraft
+            ? `v${activeDraft.version} in development`
+            : current
+              ? `v${current.version} current`
+              : "no releases"
+        }
+        ctaLabel="Open changelog"
+      >
+        <PreviewList
+          items={versions.slice(0, 4).map((v) => ({
+            key: v.id,
+            primary: `v${v.version}`,
+            secondary: v.title ?? VERSION_STATUS_LABELS[v.status],
+            trailing: v.released_at ? relativeTime(v.released_at) : "draft",
+          }))}
+          emptyLabel="No versions tracked yet."
+        />
+      </OverviewCard>
     </div>
   );
 }
 
-type CuratedBuckets = Record<CuratedListStatus, number>;
+// ── Skeletons ──────────────────────────────────────────────────────────
+function PulseSkeleton() {
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Skeleton key={i} className="h-32 rounded-xl" />
+      ))}
+    </div>
+  );
+}
+function CardsSkeleton({ n }: { n: number }) {
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      {Array.from({ length: n }).map((_, i) => (
+        <Skeleton key={i} className="h-44 rounded-xl" />
+      ))}
+    </div>
+  );
+}
 
+// ── helpers ────────────────────────────────────────────────────────────
+type CuratedBuckets = Record<CuratedListStatus, number>;
 function curatedStatus(row: CuratedRow): CuratedListStatus {
   return statusFor({
     id: row.id,
@@ -508,50 +508,25 @@ function curatedStatus(row: CuratedRow): CuratedListStatus {
     course_count: 0,
   });
 }
-
 function bucketCurated(rows: CuratedRow[]): CuratedBuckets {
-  const buckets: CuratedBuckets = {
-    draft: 0,
-    scheduled: 0,
-    live: 0,
-    expired: 0,
-    archived: 0,
-  };
-  for (const row of rows) {
-    buckets[curatedStatus(row)] += 1;
-  }
-  return buckets;
+  const b: CuratedBuckets = { draft: 0, scheduled: 0, live: 0, expired: 0, archived: 0 };
+  for (const row of rows) b[curatedStatus(row)] += 1;
+  return b;
 }
-
 function prettyStatus(status: CuratedListStatus): string {
-  switch (status) {
-    case "live":
-      return "Live";
-    case "scheduled":
-      return "Scheduled";
-    case "draft":
-      return "Draft";
-    case "expired":
-      return "Expired";
-    case "archived":
-      return "Archived";
-  }
+  return status[0].toUpperCase() + status.slice(1);
 }
-
 function relativeTime(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const diffMins = Math.round(diffMs / 60_000);
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m`;
-  const diffHours = Math.round(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h`;
-  const diffDays = Math.round(diffHours / 24);
-  if (diffDays < 30) return `${diffDays}d`;
-  const diffMonths = Math.round(diffDays / 30);
-  return `${diffMonths}mo`;
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${days}d`;
+  return `${Math.round(days / 30)}mo`;
 }
-
-function feedbackKindLabel(kind: FeedbackPreviewRow["kind"]): string {
+function feedbackKindLabel(kind: string): string {
   switch (kind) {
     case "bug":
       return "Bug";
@@ -559,11 +534,18 @@ function feedbackKindLabel(kind: FeedbackPreviewRow["kind"]): string {
       return "Data error";
     case "featureRequest":
       return "Feature request";
-    case "general":
+    case "crash":
+      return "Crash";
+    case "visualGlitch":
+      return "Visual glitch";
+    case "performance":
+      return "Performance";
+    case "confusingUX":
+      return "Confusing UX";
+    default:
       return "General";
   }
 }
-
 function feedbackStatusLabel(status: FeedbackPreviewRow["status"]): string {
   switch (status) {
     case "new":
@@ -578,7 +560,6 @@ function feedbackStatusLabel(status: FeedbackPreviewRow["status"]): string {
       return "Won't fix";
   }
 }
-
 function safeguardingKindLabel(kind: string): string {
   switch (kind) {
     case "same_day_excess":
@@ -587,13 +568,13 @@ function safeguardingKindLabel(kind: string): string {
       return "Impossible geography";
     case "velocity_spike":
       return "Velocity spike";
+    case "first_county_completion":
+      return "First county completion";
     default:
       return kind;
   }
 }
-
 function previewSentence(body: string): string {
-  const trimmed = body.trim();
-  if (trimmed.length <= 90) return trimmed;
-  return trimmed.slice(0, 87) + "…";
+  const t = body.trim();
+  return t.length <= 90 ? t : t.slice(0, 87) + "…";
 }

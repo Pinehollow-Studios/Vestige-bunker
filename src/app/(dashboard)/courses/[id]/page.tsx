@@ -1,12 +1,8 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Calendar, Hash } from "lucide-react";
-import { SectionHeader } from "@/components/admin/SectionHeader";
 import { createClient } from "@/lib/supabase/server";
 import { courseCoverURL } from "@/lib/storage";
 import { CourseEditor } from "./CourseEditor";
 import {
-  TIER_LABELS,
   type CourseDetailRow,
   type CourseLayout,
   type CourseTier,
@@ -103,45 +99,7 @@ export default async function CourseDetailPage(props: { params: RouteParams }) {
 
   const cover = courseCoverURL(row.hero_photo_storage_key);
 
-  return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <Link
-        href="/courses"
-        className="inline-flex items-center gap-1.5 text-sm text-ink-2 transition-colors hover:text-ink"
-      >
-        <ArrowLeft aria-hidden className="size-4" />
-        All courses
-      </Link>
-
-      <SectionHeader
-        eyebrow={`Editorial · ${TIER_LABELS[row.tier].toLowerCase()}`}
-        title={row.name}
-      />
-
-      <div className="flex flex-wrap items-center gap-2 rounded-xl glass-panel px-4 py-3 text-xs">
-        <span className="inline-flex items-center gap-1 rounded-full border border-rule/70 bg-paper-sunken/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-2">
-          {TIER_LABELS[row.tier]}
-        </span>
-        <span className="inline-flex items-center gap-1 rounded-full border border-rule/70 bg-paper-sunken/40 px-2 py-0.5 text-ink-2">
-          <Hash aria-hidden className="size-3" />
-          {row.curated_lists.length}{" "}
-          {row.curated_lists.length === 1 ? "curated list" : "curated lists"}
-        </span>
-        <span className="inline-flex items-center gap-1.5 text-ink-3">
-          <Calendar aria-hidden className="size-3" />
-          Updated {new Date(row.updated_at).toLocaleString()}
-          {row.last_edited_by_name && <> · by {row.last_edited_by_name}</>}
-        </span>
-        {row.legacy_fid != null && (
-          <span className="ml-auto text-[10px] tabular-nums text-ink-3">
-            fid {row.legacy_fid}
-          </span>
-        )}
-      </div>
-
-      <CourseEditor row={row} coverURL={cover} styles={styles} />
-    </div>
-  );
+  return <CourseEditor row={row} coverURL={cover} styles={styles} />;
 }
 
 function unwrapJoin<T>(value: unknown): T | null {

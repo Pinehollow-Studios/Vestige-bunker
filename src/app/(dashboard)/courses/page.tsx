@@ -1,477 +1,213 @@
-import Link from "next/link";
-import { ArrowUpRight, Hash, MapPin, Search } from "lucide-react";
 import { SectionHeader } from "@/components/admin/SectionHeader";
-import { Input } from "@/components/ui/input";
+import { TableToolbar, TableSelect, FilterChips } from "@/components/admin/table/TableToolbar";
+import { TablePagination } from "@/components/admin/table/TablePagination";
+import type { SortDir } from "@/components/admin/table/DataTable";
 import { createClient } from "@/lib/supabase/server";
-import { courseCoverURL } from "@/lib/storage";
-import { cn } from "@/lib/utils";
-import {
-  LAYOUT_LABELS,
-  TIER_LABELS,
-  type CourseLayout,
-  type CourseRow,
-  type CourseTier,
-} from "./types";
+import { LAYOUT_LABELS, TIER_LABELS, type CourseLayout, type CourseTier } from "./types";
+import { CoursesTable, type CourseTableRow } from "./CoursesTable";
 
 export const dynamic = "force-dynamic";
 
+const PAGE_SIZE = 50;
+const GAP_TYPES = ["photo", "description", "polygon", "stats"] as const;
+type Gap = (typeof GAP_TYPES)[number];
+
 type SearchParams = Promise<{
   q?: string;
-  tier?: CourseTier | "all";
-  layout?: CourseLayout | "all";
-  style?: string | "all";
-  county?: string | "all";
+  tier?: string;
+  layout?: string;
+  style?: string;
+  county?: string;
+  gap?: string;
+  sort?: string;
+  dir?: string;
+  offset?: string;
 }>;
 
-/**
- * Courses index. Reads every course (admin RLS sees the full
- * catalogue) joined to `clubs` + `counties` for display names.
- * Filters and search are server-driven via `?q=`/`?tier=` etc so
- * the URL is shareable and the client stays simple.
- *
- * **Bridge note** (Option β): the schema column is still named
- * `type` pre-M6, so the read SELECTs `type as layout` to surface
- * the post-rename name on the page even before the breaking
- * migration applies. iOS bridge decoder reads either; admin reads
- * via the alias. Once M6 lands, drop the alias.
- */
+const SORT_COLUMN: Record<string, string> = { name: "name", tier: "tier", updated: "updated_at" };
+
 export default async function CoursesPage(props: { searchParams: SearchParams }) {
-  const params = await props.searchParams;
-  const q = (params.q ?? "").trim();
-  const tier = (params.tier ?? "all") as CourseTier | "all";
-  const layout = (params.layout ?? "all") as CourseLayout | "all";
-  const style = params.style ?? "all";
-  const countyFilter = params.county ?? "all";
+  const sp = await props.searchParams;
+  const q = (sp.q ?? "").trim();
+  const tier = sp.tier ?? "all";
+  const layout = sp.layout ?? "all";
+  const style = sp.style ?? "all";
+  const county = sp.county ?? "all";
+  const gap = (GAP_TYPES.includes(sp.gap as Gap) ? sp.gap : null) as Gap | null;
+  const sort = SORT_COLUMN[sp.sort ?? ""] ? (sp.sort as string) : "name";
+  const dir: SortDir = sp.dir === "desc" ? "desc" : "asc";
+  const offsetRaw = Number(sp.offset ?? 0);
+  const offset = Number.isFinite(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
 
   const supabase = await createClient();
 
-  let query = supabase
+  // A fresh head-count query carrying the base filters + one data gap. Inlined
+  // (rather than a shared helper) so each builder keeps its own inferred type.
+  const gapCountQuery = (g: Gap) => {
+    let b = supabase.from("courses").select("id", { count: "exact", head: true });
+    if (q) b = b.ilike("name", `%${q}%`);
+    if (tier !== "all") b = b.eq("tier", tier);
+    if (layout !== "all") b = b.eq("type", layout);
+    if (style !== "all") b = b.eq("style", style);
+    if (county !== "all") b = b.eq("county_id", county);
+    if (g === "photo") b = b.is("hero_photo_storage_key", null);
+    else if (g === "description") b = b.is("description", null);
+    else if (g === "polygon") b = b.is("polygon", null); // filter only — never SELECT geometry
+    else if (g === "stats") b = b.or("par.is.null,yards.is.null");
+    return b;
+  };
+
+  // Main page query — count + the current 50 rows.
+  let listQ = supabase
     .from("courses")
     .select(
-      "id,legacy_fid,name,slug,club_id,county_id,tier,type,hole_count,par,yards,style,established,description,curated_list_ids,hero_photo_storage_key,last_edited_by_admin_id,last_edited_at,updated_at,created_at,clubs(name),counties(id,name)",
-    )
-    .order("name", { ascending: true })
-    .limit(1500);
+      "id,name,club_id,county_id,tier,type,par,yards,style,description,hero_photo_storage_key,last_edited_by_admin_id,last_edited_at,updated_at,clubs(name),counties(name)",
+      { count: "exact" },
+    );
+  if (q) listQ = listQ.ilike("name", `%${q}%`);
+  if (tier !== "all") listQ = listQ.eq("tier", tier);
+  if (layout !== "all") listQ = listQ.eq("type", layout); // bridge: column still `type`
+  if (style !== "all") listQ = listQ.eq("style", style);
+  if (county !== "all") listQ = listQ.eq("county_id", county);
+  if (gap === "photo") listQ = listQ.is("hero_photo_storage_key", null);
+  else if (gap === "description") listQ = listQ.is("description", null);
+  else if (gap === "polygon") listQ = listQ.is("polygon", null);
+  else if (gap === "stats") listQ = listQ.or("par.is.null,yards.is.null");
+  const listPromise = listQ
+    .order(SORT_COLUMN[sort], { ascending: dir === "asc" })
+    .range(offset, offset + PAGE_SIZE - 1);
 
-  if (q) {
-    query = query.ilike("name", `%${q}%`);
-  }
-  if (tier !== "all") {
-    query = query.eq("tier", tier);
-  }
-  if (layout !== "all") {
-    // Bridge: column is still `type` pre-M6.
-    query = query.eq("type", layout);
-  }
-  if (style !== "all") {
-    query = query.eq("style", style);
-  }
-  if (countyFilter !== "all") {
-    query = query.eq("county_id", countyFilter);
-  }
-
-  const [coursesResult, stylesResult, countiesResult] = await Promise.all([
-    query,
+  const [listRes, stylesRes, countiesRes, ...gapCountResults] = await Promise.all([
+    listPromise,
     supabase.rpc("distinct_course_styles"),
     supabase.from("counties").select("id,name").order("name", { ascending: true }),
+    ...GAP_TYPES.map((g) => gapCountQuery(g)),
   ]);
 
-  const styles: string[] = (stylesResult.data ?? []) as string[];
-  const counties: Array<{ id: string; name: string }> = countiesResult.data ?? [];
+  const gapCounts = Object.fromEntries(
+    GAP_TYPES.map((g, i) => [g, gapCountResults[i].count ?? 0]),
+  ) as Record<Gap, number>;
 
-  // Resolve admin display names in one round-trip — last-edited
-  // chips need a name, not a UUID. The admin user ids set is
-  // typically tiny (a handful), so a single IN query is plenty.
+  const styles = (stylesRes.data ?? []) as string[];
+  const counties = (countiesRes.data ?? []) as Array<{ id: string; name: string }>;
+  const total = listRes.count ?? 0;
+
+  // Resolve last-editor names in one round-trip.
   const adminIds = Array.from(
     new Set(
-      (coursesResult.data ?? [])
-        .map((row) => row.last_edited_by_admin_id)
-        .filter((value): value is string => typeof value === "string"),
+      (listRes.data ?? [])
+        .map((r) => r.last_edited_by_admin_id)
+        .filter((v): v is string => typeof v === "string"),
     ),
   );
   const adminNames: Record<string, string> = {};
   if (adminIds.length > 0) {
-    const { data: usersData } = await supabase
-      .from("users")
-      .select("id,display_name,username")
-      .in("id", adminIds);
-    for (const user of usersData ?? []) {
-      adminNames[user.id] = user.display_name || user.username || "Admin";
-    }
+    const { data } = await supabase.from("users").select("id,display_name,username").in("id", adminIds);
+    for (const u of data ?? []) adminNames[u.id] = u.display_name || u.username || "Admin";
   }
 
-  const rows: CourseRow[] = (coursesResult.data ?? []).map((row) => {
-    const clubs = unwrapJoin<{ name: string }>(row.clubs);
-    const counties = unwrapJoin<{ id: string; name: string }>(row.counties);
-    return {
-      id: row.id,
-      legacy_fid: row.legacy_fid,
-      name: row.name,
-      slug: row.slug,
-      club_id: row.club_id,
-      county_id: row.county_id,
-      club_name: clubs?.name ?? null,
-      county_name: counties?.name ?? null,
-      tier: row.tier as CourseTier,
-      // Bridge: surface `type` under `layout` so UI vocabulary is correct.
-      layout: (row.type ?? "primary18") as CourseLayout,
-      hole_count: row.hole_count,
-      par: row.par,
-      yards: row.yards,
-      style: row.style,
-      established: row.established,
-      description: row.description,
-      curated_list_ids: row.curated_list_ids ?? [],
-      hero_photo_storage_key: row.hero_photo_storage_key,
-      last_edited_by_admin_id: row.last_edited_by_admin_id,
-      last_edited_at: row.last_edited_at,
-      last_edited_by_name: row.last_edited_by_admin_id
-        ? adminNames[row.last_edited_by_admin_id] ?? null
-        : null,
-      updated_at: row.updated_at,
-      created_at: row.created_at,
-    };
-  });
+  const rows: CourseTableRow[] = (listRes.data ?? []).map((r) => ({
+    id: r.id,
+    name: r.name,
+    club_name: unwrap<{ name: string }>(r.clubs)?.name ?? null,
+    county_name: unwrap<{ name: string }>(r.counties)?.name ?? null,
+    tier: r.tier as CourseTier,
+    layout: (r.type ?? "primary18") as CourseLayout,
+    par: r.par,
+    yards: r.yards,
+    hasPhoto: Boolean(r.hero_photo_storage_key),
+    hasDescription: Boolean(r.description && String(r.description).trim()),
+    hasStats: r.par != null && r.yards != null,
+    lastEditedByName: r.last_edited_by_admin_id ? (adminNames[r.last_edited_by_admin_id] ?? null) : null,
+    updatedAt: r.updated_at,
+  }));
+
+  const hasFilters =
+    Boolean(q) || tier !== "all" || layout !== "all" || style !== "all" || county !== "all" || Boolean(gap);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <SectionHeader
-        eyebrow="Editorial"
-        title="Courses"
-      />
+    <div className="mx-auto max-w-6xl space-y-4">
+      <SectionHeader eyebrow="Editorial" title="Courses" />
 
-      <Filters
-        query={q}
-        tier={tier}
-        layout={layout}
-        style={style}
-        county={countyFilter}
-        styles={styles}
-        counties={counties}
-        totalRows={rows.length}
-      />
+      <TableToolbar
+        initialQuery={q}
+        searchPlaceholder="Search course name…"
+        countLabel={`${total.toLocaleString()} ${total === 1 ? "course" : "courses"}${gap ? ` · ${gapLabel(gap)}` : ""}`}
+        hasFilters={hasFilters}
+      >
+        <TableSelect
+          name="tier"
+          label="Tier"
+          value={tier}
+          options={[
+            { value: "all", label: "All tiers" },
+            ...(Object.keys(TIER_LABELS) as CourseTier[]).map((v) => ({ value: v, label: TIER_LABELS[v] })),
+          ]}
+        />
+        <TableSelect
+          name="layout"
+          label="Layout"
+          value={layout}
+          options={[
+            { value: "all", label: "All layouts" },
+            ...(Object.keys(LAYOUT_LABELS) as CourseLayout[]).map((v) => ({ value: v, label: LAYOUT_LABELS[v] })),
+          ]}
+        />
+        <TableSelect
+          name="county"
+          label="County"
+          value={county}
+          options={[{ value: "all", label: "All counties" }, ...counties.map((c) => ({ value: c.id, label: c.name }))]}
+        />
+        <TableSelect
+          name="style"
+          label="Style"
+          value={style}
+          options={[{ value: "all", label: "All styles" }, ...styles.map((s) => ({ value: s, label: s }))]}
+        />
+      </TableToolbar>
 
-      {coursesResult.error && (
-        <div className="rounded-2xl border border-alert/40 bg-alert/10 p-4 text-sm text-alert">
-          Failed to load courses: {coursesResult.error.message}
-        </div>
-      )}
-
-      {!coursesResult.error && rows.length === 0 && <EmptyState />}
-
-      {rows.length > 0 && <CountyGroupedList groups={groupByCounty(rows)} />}
-    </div>
-  );
-}
-
-const NO_COUNTY = "__no_county__";
-
-type CountyGroup = {
-  /** Stable anchor id — the county UUID, or a sentinel for orphans. */
-  key: string;
-  name: string;
-  courses: CourseRow[];
-};
-
-/**
- * Group the (name-sorted) rows into counties, sorted alphabetically with a
- * trailing "No county" bucket for orphans. Courses keep their incoming
- * name order within each county.
- */
-function groupByCounty(rows: CourseRow[]): CountyGroup[] {
-  const byKey = new Map<string, CountyGroup>();
-  for (const row of rows) {
-    const key = row.county_id ?? NO_COUNTY;
-    const name = row.county_name ?? "No county";
-    let group = byKey.get(key);
-    if (!group) {
-      group = { key, name, courses: [] };
-      byKey.set(key, group);
-    }
-    group.courses.push(row);
-  }
-  return Array.from(byKey.values()).sort((a, b) => {
-    // Orphans always sort last; otherwise alphabetical by name.
-    if (a.key === NO_COUNTY) return 1;
-    if (b.key === NO_COUNTY) return -1;
-    return a.name.localeCompare(b.name);
-  });
-}
-
-/** County index bar + one sticky-headed section per county. */
-function CountyGroupedList({ groups }: { groups: CountyGroup[] }) {
-  return (
-    <div className="space-y-6">
-      {groups.length > 1 && <CountyIndexBar groups={groups} />}
-      <div className="space-y-8">
-        {groups.map((group) => (
-          <CountySection key={group.key} group={group} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/** Pure-anchor jump bar — no JS. Each chip scrolls to its county section. */
-function CountyIndexBar({ groups }: { groups: CountyGroup[] }) {
-  return (
-    <nav
-      aria-label="Jump to county"
-      className="flex flex-wrap gap-1.5 rounded-xl glass-panel p-3"
-    >
-      {groups.map((group) => (
-        <a
-          key={group.key}
-          href={`#county-${group.key}`}
-          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-paper-sunken/40 px-2.5 py-1 text-xs text-ink-2 transition-colors hover:border-brand/40 hover:text-ink"
-        >
-          {group.name}
-          <span className="tabular-nums text-ink-3">{group.courses.length}</span>
-        </a>
-      ))}
-    </nav>
-  );
-}
-
-function CountySection({ group }: { group: CountyGroup }) {
-  return (
-    <section id={`county-${group.key}`} className="scroll-mt-20 space-y-3">
-      <header className="sticky top-16 z-10 -mx-1 flex items-center gap-2 rounded-lg border border-border bg-paper-raised/85 px-3 py-1.5 backdrop-blur-md">
-        <MapPin aria-hidden className="size-3.5 text-brand" />
-        <h2 className="font-heading text-sm font-semibold text-ink">{group.name}</h2>
-        <span className="text-xs tabular-nums text-ink-3">
-          {group.courses.length} {group.courses.length === 1 ? "course" : "courses"}
-        </span>
-      </header>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        {group.courses.map((row) => (
-          <CourseRowCard key={row.id} row={row} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function Filters({
-  query,
-  tier,
-  layout,
-  style,
-  county,
-  styles,
-  counties,
-  totalRows,
-}: {
-  query: string;
-  tier: CourseTier | "all";
-  layout: CourseLayout | "all";
-  style: string | "all";
-  county: string | "all";
-  styles: string[];
-  counties: Array<{ id: string; name: string }>;
-  totalRows: number;
-}) {
-  return (
-    <form
-      action="/courses"
-      method="get"
-      className="space-y-3 rounded-xl glass-panel p-4"
-    >
-      <div className="flex items-center gap-2">
-        <span aria-hidden className="text-ink-3">
-          <Search className="size-4" />
-        </span>
-        <Input
-          name="q"
-          defaultValue={query}
-          placeholder="Search by course name…"
-          className="h-9 flex-1"
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-3">Spot gaps</span>
+        <FilterChips
+          name="gap"
+          value={gap}
+          options={GAP_TYPES.map((g) => ({
+            value: g,
+            label: `${gapLabel(g)}${gapCounts[g] ? ` (${gapCounts[g].toLocaleString()})` : ""}`,
+          }))}
         />
       </div>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <SelectField name="tier" label="Tier" defaultValue={tier}>
-          <option value="all">All tiers</option>
-          {(Object.keys(TIER_LABELS) as CourseTier[]).map((value) => (
-            <option key={value} value={value}>
-              {TIER_LABELS[value]}
-            </option>
-          ))}
-        </SelectField>
-        <SelectField name="layout" label="Layout" defaultValue={layout}>
-          <option value="all">All layouts</option>
-          {(Object.keys(LAYOUT_LABELS) as CourseLayout[]).map((value) => (
-            <option key={value} value={value}>
-              {LAYOUT_LABELS[value]}
-            </option>
-          ))}
-        </SelectField>
-        <SelectField name="style" label="Style" defaultValue={style}>
-          <option value="all">All styles</option>
-          {styles.map((value) => (
-            <option key={value} value={value}>
-              {value}
-            </option>
-          ))}
-        </SelectField>
-        <SelectField name="county" label="County" defaultValue={county}>
-          <option value="all">All counties</option>
-          {counties.map((row) => (
-            <option key={row.id} value={row.id}>
-              {row.name}
-            </option>
-          ))}
-        </SelectField>
-      </div>
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-ink-3">
-          Showing {totalRows.toLocaleString()} {totalRows === 1 ? "course" : "courses"} (cap 1,500).
-        </p>
-        <button
-          type="submit"
-          className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-brand-fg transition-colors hover:bg-brand-deep"
-        >
-          Apply filters
-        </button>
-      </div>
-    </form>
-  );
-}
 
-function SelectField({
-  name,
-  label,
-  defaultValue,
-  children,
-}: {
-  name: string;
-  label: string;
-  defaultValue: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="flex flex-col gap-1 text-xs">
-      <span className="font-semibold uppercase tracking-wider text-ink-3">{label}</span>
-      <select
-        name={name}
-        defaultValue={defaultValue}
-        className="flex h-9 w-full rounded-lg border border-input bg-paper-sunken/40 px-3 py-1 text-sm transition-colors focus-visible:border-brand/60 focus-visible:bg-paper-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
-      >
-        {children}
-      </select>
-    </label>
-  );
-}
-
-function CourseRowCard({ row }: { row: CourseRow }) {
-  const cover = courseCoverURL(row.hero_photo_storage_key);
-  return (
-    <Link
-      href={`/courses/${row.id}`}
-      className="group/card flex gap-3 rounded-xl glass-panel p-4 transition-colors hover:border-brand/40"
-    >
-      <CoverThumb url={cover} title={row.name} />
-      <div className="flex min-w-0 flex-1 flex-col justify-between gap-1.5">
-        <div className="space-y-0.5">
-          <div className="flex items-start justify-between gap-2">
-            <h2 className="truncate font-heading text-sm font-semibold leading-snug text-ink">
-              {row.name}
-            </h2>
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-paper-sunken/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-2">
-              {TIER_LABELS[row.tier]}
-            </span>
-          </div>
-          <p className="line-clamp-1 text-xs text-ink-2">{row.club_name ?? "—"}</p>
+      {listRes.error ? (
+        <div className="rounded-xl border border-alert/40 bg-alert/10 p-4 text-sm text-alert">
+          Failed to load courses: {listRes.error.message}
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-          <Chip>{LAYOUT_LABELS[row.layout]}</Chip>
-          {row.par != null && <Chip>Par {row.par}</Chip>}
-          {row.yards != null && <Chip>{row.yards.toLocaleString()} yd</Chip>}
-          {row.style && <Chip>{row.style}</Chip>}
-          {row.established != null && <Chip>est. {row.established}</Chip>}
-          {row.curated_list_ids.length > 0 && (
-            <Chip>
-              <Hash aria-hidden className="size-2.5" /> {row.curated_list_ids.length}
-            </Chip>
-          )}
-          <span className="ml-auto inline-flex items-center gap-1 text-ink-3">
-            {row.last_edited_by_name ? (
-              <>
-                Edited by {row.last_edited_by_name}
-                {row.last_edited_at && <> · {relativeTime(row.last_edited_at)}</>}
-              </>
-            ) : (
-              <>Updated {relativeTime(row.updated_at)}</>
-            )}
-            <ArrowUpRight aria-hidden className={cn("size-3 opacity-0 transition-opacity group-hover/card:opacity-100")} />
-          </span>
-        </div>
-      </div>
-    </Link>
+      ) : (
+        <>
+          <CoursesTable rows={rows} sort={sort} dir={dir} />
+          <TablePagination offset={offset} pageSize={PAGE_SIZE} count={rows.length} hasMore={offset + rows.length < total} />
+        </>
+      )}
+    </div>
   );
 }
 
-function Chip({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-paper-sunken/40 px-2 py-0.5 text-ink-2">
-      {children}
-    </span>
-  );
-}
-
-function CoverThumb({ url, title }: { url: string | null; title: string }) {
-  if (url) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={url}
-        alt={`Cover for ${title}`}
-        className="h-20 w-32 shrink-0 rounded-lg bg-paper-sunken object-cover"
-      />
-    );
+function gapLabel(g: Gap): string {
+  switch (g) {
+    case "photo":
+      return "No photo";
+    case "description":
+      return "No description";
+    case "polygon":
+      return "No polygon";
+    case "stats":
+      return "No par/yards";
   }
-  return (
-    <div className="flex h-20 w-32 shrink-0 items-center justify-center rounded-lg border border-rule/70 bg-paper-sunken/60">
-      <MapPin aria-hidden className="size-5 text-ink-3" />
-    </div>
-  );
 }
 
-function EmptyState() {
-  return (
-    <div className="rounded-xl glass-panel p-12 text-center">
-      <div className="flex flex-col items-center gap-2">
-        <span
-          aria-hidden
-          className="flex size-10 items-center justify-center rounded-full bg-brand/15 text-brand"
-        >
-          <MapPin className="size-5" />
-        </span>
-        <p className="font-display text-base font-semibold text-ink">
-          No courses match the filters
-        </p>
-        <p className="text-sm text-ink-2">
-          Clear filters to see the full catalogue, or try a different search term.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function unwrapJoin<T>(value: unknown): T | null {
+function unwrap<T>(value: unknown): T | null {
   if (value == null) return null;
   if (Array.isArray(value)) return (value[0] as T | undefined) ?? null;
   return value as T;
-}
-
-function relativeTime(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const diffMins = Math.round(diffMs / 60_000);
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHours = Math.round(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.round(diffHours / 24);
-  if (diffDays < 30) return `${diffDays}d ago`;
-  const diffMonths = Math.round(diffDays / 30);
-  return `${diffMonths}mo ago`;
 }

@@ -1,18 +1,8 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Calendar, Hash } from "lucide-react";
-import { SectionHeader } from "@/components/admin/SectionHeader";
 import { createClient } from "@/lib/supabase/server";
 import { listCoverURL } from "@/lib/storage";
-import { cn } from "@/lib/utils";
 import { CuratedEditor } from "./CuratedEditor";
-import {
-  STATUS_CHIP,
-  STATUS_LABELS,
-  statusFor,
-  type CuratedCourseRow,
-  type CuratedListRow,
-} from "../types";
+import { type CuratedCourseRow, type CuratedListRow } from "../types";
 
 export const dynamic = "force-dynamic";
 
@@ -77,58 +67,9 @@ export default async function CuratedListEditorPage(props: { params: RouteParams
     course_count: courses.length,
   };
 
-  const status = statusFor(row);
   const cover = listCoverURL(row.cover_storage_key);
 
-  return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <Link
-        href="/curated"
-        className="inline-flex items-center gap-1.5 text-sm text-ink-2 transition-colors hover:text-ink"
-      >
-        <ArrowLeft aria-hidden className="size-4" />
-        All curated lists
-      </Link>
-
-      <SectionHeader
-        eyebrow={`Editorial · ${STATUS_LABELS[status].toLowerCase()}`}
-        title={row.name}
-      />
-
-      <div className="flex flex-wrap items-center gap-2 rounded-xl glass-panel px-4 py-3 text-xs">
-        <span
-          className={cn(
-            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-            STATUS_CHIP[status],
-          )}
-        >
-          {STATUS_LABELS[status]}
-        </span>
-        {row.tier && (
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-              row.tier === "flagship"
-                ? "border-brand/40 bg-brand/10 text-brand"
-                : "border-border bg-paper-sunken/60 text-ink-2",
-            )}
-          >
-            {row.tier}
-          </span>
-        )}
-        <span className="inline-flex items-center gap-1 rounded-full border border-border bg-paper-sunken/40 px-2 py-0.5 text-ink-2">
-          <Hash aria-hidden className="size-3" />
-          {courses.length} {courses.length === 1 ? "course" : "courses"}
-        </span>
-        <span className="inline-flex items-center gap-1.5 text-ink-3">
-          <Calendar aria-hidden className="size-3" />
-          Updated {new Date(row.updated_at).toLocaleString()}
-        </span>
-      </div>
-
-      <CuratedEditor row={row} courses={courses} coverURL={cover} />
-    </div>
-  );
+  return <CuratedEditor row={row} courses={courses} coverURL={cover} />;
 }
 
 // Local types for the joined relations Supabase JS returns.
