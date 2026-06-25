@@ -3,43 +3,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 /**
- * Modern-motion primitives, ported from the marketing site (vestige.golf)
- * so the dashboard reads like the same product. CSS-driven — no animation
- * library. All respect prefers-reduced-motion (via the CSS layer + the
- * reveal hook short-circuit).
+ * Lightweight motion primitives. CSS-driven — no animation library. All
+ * respect prefers-reduced-motion (via the CSS layer + the reveal hook
+ * short-circuit). The old animated-aurora backdrop + scroll-progress sliver
+ * were removed in the instrument rebuild — calm + fast over decorated.
  */
-
-/* ── Animated aurora backdrop — fixed mint / lime / sea blobs drifting over
-   the ocean canvas. Mount once in the dashboard layout, behind content. */
-export function AuroraBackdrop() {
-  return (
-    <div className="adm-aurora" aria-hidden="true">
-      <div className="adm-aurora-blob adm-blob-1" />
-      <div className="adm-aurora-blob adm-blob-2" />
-      <div className="adm-aurora-blob adm-blob-3" />
-    </div>
-  );
-}
-
-/* ── Scroll progress — a gradient sliver at the very top of the viewport. */
-export function ScrollProgress() {
-  const [pct, setPct] = useState(0);
-  useEffect(() => {
-    const onScroll = () => {
-      const el = document.documentElement;
-      const max = el.scrollHeight - el.clientHeight;
-      setPct(max > 0 ? (el.scrollTop / max) * 100 : 0);
-    };
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-    };
-  }, []);
-  return <div className="adm-scroll-progress" style={{ width: `${pct}%` }} />;
-}
 
 /* ── Scroll-reveal hook — true once the element scrolls into view. */
 function useReveal<T extends HTMLElement>() {

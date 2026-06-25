@@ -1,18 +1,13 @@
 import Link from "next/link";
-import { ChevronRight, ImageIcon, MapPin } from "lucide-react";
 import { SectionHeader } from "@/components/admin/SectionHeader";
-import {
-  activeStorageBaseUrl,
-  tryCreateServiceClient,
-} from "@/lib/supabase/admin";
+import { activeStorageBaseUrl, tryCreateServiceClient } from "@/lib/supabase/admin";
 import { photosRenderedURL } from "@/lib/storage";
 import { cn } from "@/lib/utils";
-import { PhotoModerationActions } from "./PhotoModerationActions";
+import { PhotoModerationGrid, type GridPhoto, type PhotoKind } from "./PhotoModerationGrid";
 
 export const dynamic = "force-dynamic";
 
 type PhotoModerationState = "pending" | "approved" | "rejected" | "flagged";
-type PhotoKind = "roundPhoto" | "avatar" | "coursePhoto";
 
 type Variants = {
   thumb_storage_key?: string;
@@ -22,7 +17,6 @@ type Variants = {
 
 type Row = {
   id: string;
-  original_storage_key: string | null;
   variants: Variants;
   kind: PhotoKind;
   moderation_state: PhotoModerationState;
@@ -37,17 +31,7 @@ type Row = {
   created_at: string;
 };
 
-const MODERATION_BUCKETS: PhotoModerationState[] = [
-  "pending",
-  "approved",
-  "rejected",
-  "flagged",
-];
-
-// Secondary filter — course photos are PUBLIC, shared-gallery content
-// (CLAUDE.md §5.2 in Vestige-ios), so they warrant a higher review bar than
-// round photos (which appear on a semi-private feed). The "Course photos"
-// filter lets a moderator focus the queue on the community submissions.
+const MODERATION_BUCKETS: PhotoModerationState[] = ["pending", "approved", "rejected", "flagged"];
 const KIND_FILTERS = [
   { value: "all", label: "All" },
   { value: "coursePhoto", label: "Course photos" },
@@ -56,36 +40,22 @@ const KIND_FILTERS = [
 ] as const;
 type KindFilter = (typeof KIND_FILTERS)[number]["value"];
 
-// The queue is sectioned by kind (course / round / avatar) so a moderator
-// isn't hit with one undifferentiated dump — course photos (public) lead.
-// In the "all" view each section is capped and offers a "View all" link into
-// its own kind filter; a focused kind view shows that section in full.
-const SECTION_KINDS: PhotoKind[] = ["coursePhoto", "roundPhoto", "avatar"];
-const SECTION_CAP = 9;
+const FETCH_CAP = 120;
 const PHOTO_COLS =
-  "id, original_storage_key, variants, kind, moderation_state, uploader_user_id, exif_taken_at, exif_gps_lat, exif_gps_lng, round_id, course_id, width, height, created_at";
+  "id, variants, kind, moderation_state, uploader_user_id, exif_taken_at, exif_gps_lat, exif_gps_lng, round_id, course_id, width, height, created_at";
 
 type SearchParams = Promise<{ state?: string; kind?: string }>;
 
 /**
- * Photo moderation surface — the NSFW / safety review queue for user-uploaded
- * photos. A photo stays `pending` until an admin approves it; the verdict gates
- * whether it surfaces on course pages and friend activity. Three kinds flow
- * through here: round photos, avatars, and `coursePhoto` — community
- * contributions to a course's public gallery (CLAUDE.md §5.2, pre-moderated:
- * only `approved` ones surface). The "Course photos" kind filter focuses the
- * queue on those public submissions, which warrant a higher review bar.
- *
- * Reads go through the service-role client: `public.photos` has only a
- * `photos_select_own` RLS policy (no admin SELECT), so the admin's session
- * would see ~zero rows. Service-role bypasses RLS and is gated by the layout's
- * `requireAdmin()`. Single moderation axis — the verification axis on
- * `photos.verification_state` was dropped 2026-05-19 (Vestige-ios migration
- * 20260519110000_drop_verification.sql).
+ * Photo moderation — the safety review queue for user-uploaded photos (round
+ * photos, avatars, and public `coursePhoto` gallery contributions, CLAUDE.md
+ * §5.2). A photo stays `pending` until approved; only approved ones surface in
+ * the app. Reads + writes go through service-role (`public.photos` has no admin
+ * SELECT). The grid handles selection / bulk / keyboard / optimism.
  */
 export default async function PhotosPage(props: { searchParams: SearchParams }) {
   const params = await props.searchParams;
-  const active = MODERATION_BUCKETS.includes(params.state as PhotoModerationState)
+  const active: PhotoModerationState = MODERATION_BUCKETS.includes(params.state as PhotoModerationState)
     ? (params.state as PhotoModerationState)
     : "pending";
   const kind: KindFilter = KIND_FILTERS.some((k) => k.value === params.kind)
@@ -93,14 +63,10 @@ export default async function PhotosPage(props: { searchParams: SearchParams }) 
     : "all";
 
   const supabase = await tryCreateServiceClient();
-
   if (!supabase) {
     return (
-      <div className="mx-auto max-w-5xl space-y-6">
-        <SectionHeader
-          eyebrow="Queues · Photo moderation"
-          title="Photo moderation"
-        />
+      <div className="mx-auto max-w-6xl space-y-6">
+        <SectionHeader eyebrow="Queues · moderation" title="Photos" />
         <ConfigNotice />
       </div>
     );
@@ -108,13 +74,10 @@ export default async function PhotosPage(props: { searchParams: SearchParams }) 
 
   const baseUrl = await activeStorageBaseUrl();
 
-  // State-bucket counts for the StatTiles (scoped to the active kind filter).
+  // Bucket counts (scoped to the kind filter) for the state tiles.
   const modCountsRes = await Promise.all(
     MODERATION_BUCKETS.map(async (state) => {
-      let q = supabase
-        .from("photos")
-        .select("id", { count: "exact", head: true })
-        .eq("moderation_state", state);
+      let q = supabase.from("photos").select("id", { count: "exact", head: true }).eq("moderation_state", state);
       if (kind !== "all") q = q.eq("kind", kind);
       const { count } = await q;
       return [state, count ?? 0] as const;
@@ -122,31 +85,54 @@ export default async function PhotosPage(props: { searchParams: SearchParams }) 
   );
   const modCounts = Object.fromEntries(modCountsRes) as Record<PhotoModerationState, number>;
 
-  // One section per kind. "all" → the three sections, each capped (with a
-  // "View all" link); a focused kind → that one section, fuller.
-  const sectionKinds = kind === "all" ? SECTION_KINDS : [kind];
-  const sectionLimit = kind === "all" ? SECTION_CAP : 60;
-  const sections = await Promise.all(
-    sectionKinds.map((k) => fetchKindBucket(supabase, k, active, sectionLimit)),
-  );
+  // The active bucket's newest rows.
+  let listQuery = supabase
+    .from("photos")
+    .select(PHOTO_COLS)
+    .eq("moderation_state", active)
+    .order("created_at", { ascending: false })
+    .limit(FETCH_CAP);
+  if (kind !== "all") listQuery = listQuery.eq("kind", kind);
+  const listRes = await listQuery;
 
-  // Resolve uploader + course display names once across every section's rows.
-  const allRows = sections.flatMap((s) => s.rows);
-  const uploaderIds = uniq(allRows.map((r) => r.uploader_user_id));
-  const courseIds = uniq(allRows.map((r) => r.course_id));
+  // `coursePhoto` enum may not exist on this env yet (prod pre-migration) → an
+  // enum filter error is treated as an empty bucket, not a page failure.
+  const err = listRes.error?.message ?? null;
+  const unknownEnum = err?.includes("invalid input value for enum") ?? false;
+  const rows = (listRes.data as Row[] | null) ?? [];
+
+  const uploaderIds = uniq(rows.map((r) => r.uploader_user_id));
+  const courseIds = uniq(rows.map((r) => r.course_id));
   const [uploaderNames, courseNames] = await Promise.all([
     resolveUploaderNames(supabase, uploaderIds),
     resolveCourseNames(supabase, courseIds),
   ]);
-  const sectionError = sections.find((s) => s.error)?.error ?? null;
-  const totalShown = sections.reduce((n, s) => n + s.count, 0);
+
+  const photos: GridPhoto[] = rows.map((r) => {
+    const thumbUrl = photosRenderedURL(r.variants?.medium_storage_key ?? r.variants?.thumb_storage_key, baseUrl);
+    const fullUrl = photosRenderedURL(r.variants?.large_storage_key, baseUrl) ?? thumbUrl;
+    const context =
+      (r.course_id ? courseNames[r.course_id] : null) ??
+      (r.round_id ? "on a round" : r.kind === "avatar" ? "Profile avatar" : null);
+    return {
+      id: r.id,
+      kind: r.kind,
+      state: r.moderation_state,
+      uploaderName: r.uploader_user_id ? (uploaderNames[r.uploader_user_id] ?? null) : null,
+      contextLabel: context,
+      isCourse: r.kind === "coursePhoto",
+      thumbUrl,
+      fullUrl,
+      geotagged: r.exif_gps_lat != null && r.exif_gps_lng != null,
+      dims: r.width && r.height ? `${r.width}×${r.height}` : null,
+      takenAt: r.exif_taken_at,
+      createdAt: r.created_at,
+    };
+  });
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <SectionHeader
-        eyebrow="Queues · Photo moderation"
-        title="Photo moderation"
-      />
+    <div className="mx-auto max-w-6xl space-y-5">
+      <SectionHeader eyebrow="Queues · moderation" title="Photos" />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {MODERATION_BUCKETS.map((state) => (
@@ -178,176 +164,10 @@ export default async function PhotosPage(props: { searchParams: SearchParams }) 
         ))}
       </div>
 
-      {sectionError && (
-        <p className="text-xs text-alert">Failed to load: {sectionError}</p>
-      )}
+      {err && !unknownEnum && <p className="text-xs text-alert">Failed to load: {err}</p>}
 
-      {totalShown === 0 ? (
-        <EmptyState
-          title={active === "pending" ? "Nothing to moderate" : `No ${prettyMod(active).toLowerCase()} photos`}
-          subtitle={
-            active === "pending"
-              ? "No photos are awaiting review."
-              : "Nothing in this bucket yet."
-          }
-        />
-      ) : (
-        sections
-          // In the all-kinds view, hide a kind that has nothing in this bucket;
-          // in a focused kind view, keep its (possibly empty) section.
-          .filter((s) => s.count > 0 || kind !== "all")
-          .map((s) => (
-            <PhotoSection
-              key={s.kind}
-              section={s}
-              active={active}
-              baseUrl={baseUrl}
-              uploaderNames={uploaderNames}
-              courseNames={courseNames}
-              // Collapsed by default in the all-kinds view so the tab opens to
-              // category headers, not a wall of photos; a focused kind opens.
-              defaultOpen={kind !== "all"}
-            />
-          ))
-      )}
+      <PhotoModerationGrid photos={photos} activeState={active} />
     </div>
-  );
-}
-
-function PhotoSection({
-  section,
-  active,
-  baseUrl,
-  uploaderNames,
-  courseNames,
-  defaultOpen,
-}: {
-  section: KindBucket;
-  active: PhotoModerationState;
-  baseUrl: string;
-  uploaderNames: Record<string, string>;
-  courseNames: Record<string, string>;
-  defaultOpen: boolean;
-}) {
-  const { kind, count, rows } = section;
-  const label = KIND_FILTERS.find((k) => k.value === kind)?.label ?? prettyKind(kind);
-  const hasMore = count > rows.length;
-
-  return (
-    <details open={defaultOpen} className="group rounded-xl glass-panel">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
-        <div className="flex items-center gap-2">
-          <ChevronRight
-            className="size-4 text-ink-3 transition-transform group-open:rotate-90"
-            aria-hidden
-          />
-          <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-2">{label}</h2>
-          <span className="text-[11px] tabular-nums text-ink-3">{count}</span>
-        </div>
-        <span className="text-[11px] text-ink-3 group-open:hidden">
-          {count} to review
-        </span>
-      </summary>
-
-      <div className="space-y-3 px-4 pb-4">
-        {rows.length === 0 ? (
-          <EmptyState title={`No ${label.toLowerCase()}`} subtitle="Nothing in this bucket yet." />
-        ) : (
-          <>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {rows.map((row) => (
-                <PhotoTile
-                  key={row.id}
-                  row={row}
-                  baseUrl={baseUrl}
-                  uploaderName={row.uploader_user_id ? uploaderNames[row.uploader_user_id] : null}
-                  courseName={row.course_id ? courseNames[row.course_id] : null}
-                />
-              ))}
-            </div>
-            {hasMore && (
-              <Link
-                href={`/photos?state=${active}&kind=${kind}`}
-                className="inline-block text-[11px] font-medium text-brand hover:underline"
-              >
-                View all {count} →
-              </Link>
-            )}
-          </>
-        )}
-      </div>
-    </details>
-  );
-}
-
-function PhotoTile({
-  row,
-  baseUrl,
-  uploaderName,
-  courseName,
-}: {
-  row: Row;
-  baseUrl: string;
-  uploaderName: string | null;
-  courseName: string | null;
-}) {
-  const thumb = photosRenderedURL(
-    row.variants?.medium_storage_key ?? row.variants?.thumb_storage_key,
-    baseUrl,
-  );
-  const full = photosRenderedURL(row.variants?.large_storage_key, baseUrl) ?? thumb;
-  const geotagged = row.exif_gps_lat != null && row.exif_gps_lng != null;
-
-  return (
-    <figure className="flex flex-col overflow-hidden rounded-xl glass-panel">
-      {full ? (
-        <a
-          href={full}
-          target="_blank"
-          rel="noreferrer"
-          className="group/img relative block aspect-square bg-paper-sunken"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={thumb ?? full}
-            alt={`${prettyKind(row.kind)} by ${uploaderName ?? "user"}`}
-            className="size-full object-cover transition-opacity group-hover/img:opacity-90"
-          />
-          {geotagged && (
-            <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
-              <MapPin className="size-2.5" aria-hidden /> Geotagged
-            </span>
-          )}
-        </a>
-      ) : (
-        <div className="flex aspect-square items-center justify-center bg-paper-sunken/60 text-ink-3">
-          <ImageIcon className="size-6" aria-hidden />
-        </div>
-      )}
-
-      <figcaption className="flex flex-1 flex-col gap-2 p-3">
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-xs font-medium text-ink">
-            {uploaderName ?? "Unknown user"}
-          </span>
-          <StateChip state={row.moderation_state} />
-        </div>
-        <div className="flex min-w-0 items-center gap-1.5">
-          <KindChip kind={row.kind} />
-          <span className="truncate text-[11px] text-ink-2">
-            {courseName ?? (row.round_id ? "on a round" : "—")}
-          </span>
-        </div>
-        <p className="text-[11px] tabular-nums text-ink-3">
-          {row.width && row.height ? `${row.width}×${row.height} · ` : ""}
-          {row.exif_taken_at ? `taken ${relativeTime(row.exif_taken_at)}` : "no exif"} · added{" "}
-          {relativeTime(row.created_at)}
-        </p>
-        <div className="mt-auto pt-1">
-          <PhotoModerationActions photoId={row.id} current={row.moderation_state} />
-        </div>
-      </figcaption>
-    </figure>
   );
 }
 
@@ -364,16 +184,10 @@ function StatTile({
   active: boolean;
   kind: KindFilter;
 }) {
-  const tone =
-    state === "pending"
-      ? "brand"
-      : state === "rejected" || state === "flagged"
-        ? "alert"
-        : undefined;
   const numClass =
-    tone === "brand" && value > 0
+    state === "pending" && value > 0
       ? "text-brand"
-      : tone === "alert" && value > 0
+      : (state === "rejected" || state === "flagged") && value > 0
         ? "text-alert"
         : "text-ink";
   return (
@@ -385,184 +199,56 @@ function StatTile({
       )}
     >
       <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-3">{label}</p>
-      <p className={"mt-2 font-hero text-3xl leading-none tabular-nums " + numClass}>
+      <p className={"mt-2 font-display text-3xl font-semibold leading-none tabular-nums " + numClass}>
         {value.toLocaleString()}
       </p>
     </Link>
   );
 }
 
-function StateChip({ state }: { state: PhotoModerationState }) {
-  const cls =
-    state === "approved"
-      ? "border-brand/40 text-brand"
-      : state === "pending"
-        ? "border-amber/40 text-amber"
-        : state === "rejected" || state === "flagged"
-          ? "border-alert/40 text-alert"
-          : "border-rule/70 text-ink-3";
-  return (
-    <span
-      className={
-        "inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider " +
-        cls
-      }
-    >
-      {prettyMod(state)}
-    </span>
-  );
-}
-
-function KindChip({ kind }: { kind: PhotoKind }) {
-  // Course photos are public, shared-gallery content — flag them in brand
-  // accent so a moderator spots them at a glance; round/avatar are muted.
-  const isCourse = kind === "coursePhoto";
-  return (
-    <span
-      className={
-        "inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider " +
-        (isCourse ? "border-brand/40 text-brand" : "border-rule/70 text-ink-3")
-      }
-    >
-      {prettyKind(kind)}
-    </span>
-  );
-}
-
-function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
-  return (
-    <div className="flex flex-col items-center gap-3 rounded-xl glass-panel px-4 py-12 text-center">
-      <span className="flex size-10 items-center justify-center rounded-full bg-brand/15 text-brand">
-        <ImageIcon className="size-5" aria-hidden />
-      </span>
-      <p className="display-serif text-lg text-ink">{title}</p>
-      <p className="text-sm text-ink-2">{subtitle}</p>
-    </div>
-  );
-}
-
 function ConfigNotice() {
   return (
     <div className="rounded-xl border border-amber/40 bg-amber/10 p-4 text-sm text-ink-2">
-      Photo moderation needs the service-role key for the active environment.
-      Set <code className="font-mono text-xs">SUPABASE_SERVICE_ROLE_KEY_DEV</code> /{" "}
-      <code className="font-mono text-xs">SUPABASE_SERVICE_ROLE_KEY_PROD</code> (server-only) to
-      read the queue — <code className="font-mono text-xs">public.photos</code> has no admin SELECT
-      policy, so the session client can&apos;t see other users&apos; photos.
+      Photo moderation needs the service-role key for the active environment. Set{" "}
+      <code className="font-mono text-xs">SUPABASE_SERVICE_ROLE_KEY_DEV</code> /{" "}
+      <code className="font-mono text-xs">SUPABASE_SERVICE_ROLE_KEY_PROD</code> (server-only) —{" "}
+      <code className="font-mono text-xs">public.photos</code> has no admin SELECT policy.
     </div>
   );
 }
 
-type SupabaseClient = NonNullable<Awaited<ReturnType<typeof tryCreateServiceClient>>>;
-
-type KindBucket = {
-  kind: PhotoKind;
-  count: number;
-  rows: Row[];
-  error: string | null;
-};
-
-/** Fetch one kind's count + newest `limit` rows for a moderation state. */
-async function fetchKindBucket(
-  supabase: SupabaseClient,
-  kind: PhotoKind,
-  state: PhotoModerationState,
-  limit: number,
-): Promise<KindBucket> {
-  const [countRes, listRes] = await Promise.all([
-    supabase
-      .from("photos")
-      .select("id", { count: "exact", head: true })
-      .eq("moderation_state", state)
-      .eq("kind", kind),
-    supabase
-      .from("photos")
-      .select(PHOTO_COLS)
-      .eq("moderation_state", state)
-      .eq("kind", kind)
-      .order("created_at", { ascending: false })
-      .limit(limit),
-  ]);
-  // A kind whose enum value doesn't exist on this environment yet — e.g.
-  // `coursePhoto` on prod before the Vestige-ios migration lands — makes
-  // Postgres reject the `.eq("kind", …)` filter with an "invalid input value
-  // for enum" error. Treat that as an empty bucket (the section simply shows
-  // nothing until the enum + its photos arrive), not a page-level failure.
-  const err = listRes.error?.message ?? null;
-  const unknownEnum = err?.includes("invalid input value for enum") ?? false;
-  return {
-    kind,
-    count: countRes.count ?? 0,
-    rows: (listRes.data as Row[] | null) ?? [],
-    error: unknownEnum ? null : err,
-  };
-}
+type ServiceClient = NonNullable<Awaited<ReturnType<typeof tryCreateServiceClient>>>;
 
 function uniq(values: Array<string | null>): string[] {
   return Array.from(new Set(values.filter((v): v is string => typeof v === "string")));
 }
 
-/** Resolve uploader ids → display name (display_name › username › "User"). */
 async function resolveUploaderNames(
-  supabase: SupabaseClient,
+  supabase: ServiceClient,
   ids: string[],
 ): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   if (ids.length === 0) return out;
-  const { data } = await supabase
-    .from("users")
-    .select("id, display_name, username")
-    .in("id", ids);
-  for (const row of data ?? []) {
+  const { data } = await supabase.from("users").select("id, display_name, username").in("id", ids);
+  for (const row of (data as Array<{ id: string; display_name: string | null; username: string | null }> | null) ?? []) {
     out[row.id] = row.display_name || row.username || "User";
   }
   return out;
 }
 
-/** Resolve course ids → course name via one IN query. */
 async function resolveCourseNames(
-  supabase: SupabaseClient,
+  supabase: ServiceClient,
   ids: string[],
 ): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   if (ids.length === 0) return out;
   const { data } = await supabase.from("courses").select("id, name").in("id", ids);
-  for (const row of data ?? []) out[row.id] = row.name;
+  for (const row of (data as Array<{ id: string; name: string }> | null) ?? []) {
+    out[row.id] = row.name;
+  }
   return out;
 }
 
 function prettyMod(state: PhotoModerationState): string {
-  switch (state) {
-    case "pending":
-      return "Pending";
-    case "approved":
-      return "Approved";
-    case "rejected":
-      return "Rejected";
-    case "flagged":
-      return "Flagged";
-  }
-}
-
-function prettyKind(kind: PhotoKind): string {
-  switch (kind) {
-    case "roundPhoto":
-      return "Round photo";
-    case "avatar":
-      return "Avatar";
-    case "coursePhoto":
-      return "Course photo";
-  }
-}
-
-function relativeTime(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const diffMins = Math.round(diffMs / 60_000);
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m`;
-  const diffHours = Math.round(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h`;
-  const diffDays = Math.round(diffHours / 24);
-  if (diffDays < 30) return `${diffDays}d`;
-  return `${Math.round(diffDays / 30)}mo`;
+  return state[0].toUpperCase() + state.slice(1);
 }

@@ -63,3 +63,38 @@ export async function setPhotoModeration(
   revalidatePath("/photos");
   return { ok: true };
 }
+
+/**
+ * Bulk-set moderation state on many photos at once (grid bulk bar). One
+ * `.in(...)` update through service-role. Same column-grant rationale as the
+ * single setter; `moderation_reviewer_user_id` left NULL for the same FK reason.
+ */
+export async function setPhotoModerationBulk(
+  photoIds: string[],
+  next: ModerationState,
+): Promise<ActionResult> {
+  if (!ALLOWED.includes(next)) {
+    return { ok: false, message: `Invalid moderation state: ${next}` };
+  }
+  await requireAdmin();
+  if (photoIds.length === 0) return { ok: true };
+
+  let supabase;
+  try {
+    supabase = await createServiceClient();
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : "Service-role not configured",
+    };
+  }
+
+  const { error } = await supabase
+    .from("photos")
+    .update({ moderation_state: next, moderation_reviewed_at: new Date().toISOString() })
+    .in("id", photoIds);
+  if (error) return { ok: false, message: error.message };
+
+  revalidatePath("/photos");
+  return { ok: true };
+}

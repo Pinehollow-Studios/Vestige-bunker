@@ -73,6 +73,7 @@
   --color-ink-2: var(--ink-2);
   --color-ink-3: var(--ink-3);
   --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
   --color-info: var(--info);
   --color-alert: var(--alert);
   --color-bucket: var(--bucket);
@@ -241,13 +242,20 @@
   }
   body {
     @apply bg-background text-foreground;
-    /* Atlas atmosphere — a whisper, not a light show. One faint mint glow up
-       top and a faint amber warmth bottom-right, mirroring the iOS app's
-       AtlasAtmosphere. Calm enough to sit behind dense data all day. */
+  }
+  /* Atlas atmosphere — one faint static mint glow + a touch of amber warmth,
+     pinned behind everything on a fixed layer so it never repaints on scroll
+     (the old `background-attachment: fixed` on <body> was a scroll-jank source).
+     A whisper, not a light show — calm enough to sit behind dense data all day. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
     background-image:
-      radial-gradient(70% 50% at 50% -8%, color-mix(in oklab, var(--brand) 7%, transparent) 0%, transparent 70%),
-      radial-gradient(60% 50% at 108% 108%, color-mix(in oklab, var(--amber) 5%, transparent) 0%, transparent 70%);
-    background-attachment: fixed;
+      radial-gradient(58% 44% at 50% -10%, color-mix(in oklab, var(--brand) 6%, transparent) 0%, transparent 70%),
+      radial-gradient(52% 44% at 106% 106%, color-mix(in oklab, var(--amber) 4%, transparent) 0%, transparent 70%);
   }
   html {
     @apply font-sans;
@@ -385,29 +393,26 @@
   --gradient-accent-tilt: linear-gradient(160deg, #5be4c3 0%, #8fe85b 100%);
 }
 
-/* Frosted glass surfaces — subtle white-gradient over the ocean, blurred. */
+/* Panel — a solid raised surface with a hairline rule. No backdrop-blur:
+   the instrument reads as crisp panels-on-paper, and we drop the per-card
+   compositor cost that made dense pages feel sluggish. Named `.glass-panel`
+   for call-site compatibility (40+ surfaces inherit this one definition). */
 .glass-panel {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012));
+  background: var(--paper-raised);
   border: 1px solid var(--rule);
-  backdrop-filter: blur(16px) saturate(135%);
-  -webkit-backdrop-filter: blur(16px) saturate(135%);
+  box-shadow: inset 0 1px 0 0 color-mix(in oklab, white 4%, transparent);
 }
 
-/* Interactive glass — lifts + mint glow on hover (cards, tiles, links). */
+/* Interactive panel — a calm, fast hover (border brighten + faint lift in
+   tint). No translate, no glow, no 400ms easing — instrument, not landing page. */
 .glass-card {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.014));
+  background: var(--paper-raised);
   border: 1px solid var(--rule);
-  backdrop-filter: blur(16px) saturate(135%);
-  -webkit-backdrop-filter: blur(16px) saturate(135%);
-  transition:
-    border-color 0.3s ease,
-    transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1),
-    box-shadow 0.4s ease;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 .glass-card:hover {
   border-color: var(--rule-strong);
-  transform: translateY(-3px);
-  box-shadow: 0 24px 60px -28px rgba(91, 228, 195, 0.25);
+  background: color-mix(in oklab, var(--paper-raised) 90%, white 10%);
 }
 
 /* Gradient mint CTA. */
@@ -450,90 +455,20 @@
   }
 }
 .adm-rise {
-  animation: adm-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: adm-rise 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
-/* Animated aurora backdrop — quieter than the marketing hero; fixed behind
-   the whole app. Mounted by <AuroraBackdrop /> in the dashboard layout. */
-.adm-aurora {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-.adm-aurora-blob {
-  position: absolute;
-  width: 60vmax;
-  height: 60vmax;
-  border-radius: 50%;
-  filter: blur(110px);
-  will-change: transform;
-  mix-blend-mode: screen;
-}
-.adm-blob-1 {
-  top: -22vmax;
-  left: -12vmax;
-  opacity: 0.26;
-  background: radial-gradient(circle, #5be4c3 0%, transparent 60%);
-  animation: adm-drift-1 26s ease-in-out infinite alternate;
-}
-.adm-blob-2 {
-  bottom: -26vmax;
-  right: -12vmax;
-  opacity: 0.2;
-  background: radial-gradient(circle, #8fe85b 0%, transparent 60%);
-  animation: adm-drift-2 32s ease-in-out infinite alternate;
-}
-.adm-blob-3 {
-  top: 18vmax;
-  right: 12vmax;
-  width: 40vmax;
-  height: 40vmax;
-  opacity: 0.14;
-  background: radial-gradient(circle, #5b9be4 0%, transparent 60%);
-  animation: adm-drift-3 38s ease-in-out infinite alternate;
-}
-@keyframes adm-drift-1 {
-  0% { transform: translate(0, 0) scale(1); }
-  100% { transform: translate(16vmax, 8vmax) scale(1.12); }
-}
-@keyframes adm-drift-2 {
-  0% { transform: translate(0, 0) scale(1.05); }
-  100% { transform: translate(-12vmax, -8vmax) scale(1); }
-}
-@keyframes adm-drift-3 {
-  0% { transform: translate(0, 0) scale(0.9); }
-  100% { transform: translate(-10vmax, 12vmax) scale(1.12); }
-}
-
-/* Pulse dot (live eyebrow). */
+/* Live status dot — a calm steady pulse for "this queue has items". One small
+   element, cheap; replaces the old animated-aurora + scroll-progress theater. */
 @keyframes adm-pulse-dot {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.5; transform: scale(0.82); }
 }
-@keyframes adm-pulse-ring {
-  0% { transform: scale(0.7); opacity: 0.6; }
-  100% { transform: scale(2.2); opacity: 0; }
-}
-
-/* Scroll progress bar (mounted by <ScrollProgress />). */
-.adm-scroll-progress {
-  position: fixed;
-  top: 0;
-  left: 0;
-  height: 2px;
-  background: var(--gradient-accent);
-  z-index: 100;
-  pointer-events: none;
-  transition: width 90ms linear;
-  box-shadow: 0 0 8px rgba(91, 228, 195, 0.6);
-}
 
 @media (prefers-reduced-motion: reduce) {
-  .adm-aurora-blob,
   .adm-rise,
-  .glass-card {
+  .glass-card,
+  .pulse-dot {
     animation: none !important;
     transition: none !important;
   }

@@ -16,7 +16,6 @@ import {
 } from "../actions";
 import { CoverCropDialog } from "./CoverCropDialog";
 import {
-  type CourseCatalogRow,
   type CuratedCourseRow,
   type CuratedListRow,
   type CuratedListTier,
@@ -42,12 +41,10 @@ import { CourseRowList } from "./CourseRowList";
 export function CuratedEditor({
   row,
   courses,
-  catalog,
   coverURL,
 }: {
   row: CuratedListRow;
   courses: CuratedCourseRow[];
-  catalog: CourseCatalogRow[];
   coverURL: string | null;
 }) {
   return (
@@ -57,7 +54,7 @@ export function CuratedEditor({
         <EditorialForm row={row} />
         <PublishControls row={row} />
       </div>
-      <CourseSection row={row} courses={courses} catalog={catalog} />
+      <CourseSection row={row} courses={courses} />
     </div>
   );
 }
@@ -578,11 +575,9 @@ function toLocalInput(iso: string): string {
 function CourseSection({
   row,
   courses,
-  catalog,
 }: {
   row: CuratedListRow;
   courses: CuratedCourseRow[];
-  catalog: CourseCatalogRow[];
 }) {
   const onListIds = useMemo(() => new Set(courses.map((c) => c.course_id)), [courses]);
   return (
@@ -594,7 +589,7 @@ function CourseSection({
             Reorder with the row arrows. Add courses from the picker.
           </p>
         </div>
-        <CoursePicker listId={row.id} catalog={catalog} alreadyOnList={onListIds} />
+        <CoursePicker listId={row.id} alreadyOnList={onListIds} />
       </header>
       {courses.length === 0 ? (
         <div className="rounded-lg border border-rule/70 bg-paper-sunken/30 p-6 text-center text-sm text-ink-3">

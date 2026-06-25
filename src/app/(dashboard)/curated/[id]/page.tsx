@@ -12,7 +12,6 @@ import {
   statusFor,
   type CuratedCourseRow,
   type CuratedListRow,
-  type CourseCatalogRow,
 } from "../types";
 
 export const dynamic = "force-dynamic";
@@ -23,11 +22,11 @@ export default async function CuratedListEditorPage(props: { params: RouteParams
   const { id } = await props.params;
   const supabase = await createClient();
 
-  // Three queries in parallel:
+  // Two queries in parallel — the editor no longer loads the whole catalogue
+  // upfront (the picker searches it on demand via /api/courses/search):
   //  1. The list row itself (full payload)
   //  2. The course rows attached to it (joined to courses + clubs + counties for display)
-  //  3. The full course catalog for the picker (id + names only — small payload)
-  const [listResult, coursesResult, catalogResult] = await Promise.all([
+  const [listResult, coursesResult] = await Promise.all([
     supabase
       .from("curated_lists")
       .select(
@@ -42,11 +41,6 @@ export default async function CuratedListEditorPage(props: { params: RouteParams
       )
       .eq("curated_list_id", id)
       .order("position", { ascending: true, nullsFirst: false }),
-    supabase
-      .from("courses")
-      .select("id,name,club_id,county_id,clubs(name),counties(name)")
-      .order("name", { ascending: true })
-      .limit(2000),
   ]);
 
   if (listResult.error) {
@@ -73,15 +67,6 @@ export default async function CuratedListEditorPage(props: { params: RouteParams
       county_name: unwrapRow<{ name: string }>(c?.counties)?.name ?? null,
       position: row.position,
       editor_note: row.editor_note,
-    };
-  });
-
-  const catalog: CourseCatalogRow[] = (catalogResult.data ?? []).map((row) => {
-    return {
-      course_id: row.id,
-      course_name: row.name,
-      club_name: unwrapRow<{ name: string }>(row.clubs)?.name ?? null,
-      county_name: unwrapRow<{ name: string }>(row.counties)?.name ?? null,
     };
   });
 
@@ -141,7 +126,7 @@ export default async function CuratedListEditorPage(props: { params: RouteParams
         </span>
       </div>
 
-      <CuratedEditor row={row} courses={courses} catalog={catalog} coverURL={cover} />
+      <CuratedEditor row={row} courses={courses} coverURL={cover} />
     </div>
   );
 }

@@ -1,20 +1,25 @@
+import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { FlaskConical } from "lucide-react";
 import { Sidebar } from "@/components/admin/Sidebar";
 import { TopBar } from "@/components/admin/TopBar";
-import { AuroraBackdrop, ScrollProgress } from "@/components/admin/Motion";
+import { CommandPalette } from "@/components/admin/CommandPalette";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
-import { createClient } from "@/lib/supabase/server";
-import { tryCreateServiceClient } from "@/lib/supabase/admin";
+import { getDashboardCounts } from "@/lib/admin/counts";
 import { activeEnvKey, DEV_SWITCH_ENABLED, ENV_COOKIE } from "@/lib/supabase/env";
-import { FEEDBACK_ACTIVE_WORK_STAGES } from "@/lib/feedback/types";
+import type { AdminEnvKey } from "@/lib/supabase/env";
+import type { AdminRole, AdminUser } from "@/lib/auth/requireAdmin";
 
-const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-
-function sevenDaysAgoIso(): string {
-  return new Date(Date.now() - SEVEN_DAYS_MS).toISOString();
-}
-
+/**
+ * The dashboard shell.
+ *
+ * The layout itself awaits only the admin gate (one fast query) so page
+ * content streams the instant the page's own data resolves. The sidebar +
+ * top-bar badge counts — non-critical chrome — stream in behind their own
+ * Suspense boundaries via {@link getDashboardCounts}; they never block a page.
+ * No animated aurora, no scroll-progress: the canvas is the static Atlas
+ * atmosphere from globals.css. This is an instrument, not a landing page.
+ */
 export default async function DashboardLayout({
   children,
 }: {
@@ -23,102 +28,23 @@ export default async function DashboardLayout({
   const admin = await requireAdmin();
   const env = activeEnvKey((await cookies()).get(ENV_COOKIE)?.value);
 
-  // Lightweight counts in parallel for sidebar badges. Each result
-  // is independently nullable — a failed query just hides the
-  // matching pip. None of these are blocking critical-path data.
-  const supabase = await createClient();
-  // Users + photos counts are read through the service-role client when
-  // available: neither `public.users` nor `public.photos` has an admin SELECT
-  // policy, so the anon session undercounts (only public/friend profiles; only
-  // the admin's own photos). Falls back to the session client when service-role
-  // isn't configured (pills just show the visible slice).
-  const svc = await tryCreateServiceClient();
-  const adminRead = svc ?? supabase;
-  const [
-    queueRes,
-    curatedRes,
-    coursesRes,
-    feedbackRes,
-    photosRes,
-    safeguardingRes,
-    usersRes,
-    crashesRes,
-    announcementsRes,
-    changelogRes,
-  ] = await Promise.all([
-    supabase.rpc("admin_list_verification_queue"),
-    supabase
-      .from("curated_lists")
-      .select("id", { count: "exact", head: true })
-      .eq("is_archived", false),
-    supabase
-      .from("courses")
-      .select("id", { count: "exact", head: true }),
-    supabase
-      .from("feedback_reports")
-      .select("id", { count: "exact", head: true })
-      // Open tickets = active work_stage (matches the queue's Active tab).
-      // Counting by reporter-facing `status` over-counts: post-split,
-      // "Won't fix" closes the work_stage but leaves `status` open.
-      .in("work_stage", FEEDBACK_ACTIVE_WORK_STAGES),
-    adminRead
-      .from("photos")
-      .select("id", { count: "exact", head: true })
-      .eq("moderation_state", "pending"),
-    supabase
-      .from("safeguarding_flags")
-      .select("id", { count: "exact", head: true })
-      .eq("state", "pending"),
-    adminRead
-      .from("users")
-      .select("id", { count: "exact", head: true }),
-    supabase
-      .from("crash_reports")
-      .select("id", { count: "exact", head: true })
-      .gte("last_seen", sevenDaysAgoIso()),
-    // Live announcements pill — published, not archived. The announcements
-    // tables may not exist in this env yet (prod before Tom's deploy); a
-    // missing-table query returns { count: null } here rather than throwing,
-    // so the pill silently hides — same resilience as every other count.
-    supabase
-      .from("announcements")
-      .select("id", { count: "exact", head: true })
-      .eq("is_archived", false)
-      .not("published_at", "is", null)
-      .lte("published_at", new Date().toISOString()),
-    // Changelog pill — versions still in progress (draft). Same missing-table
-    // resilience as announcements: { count: null } before the migration lands.
-    supabase
-      .from("app_versions")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "draft"),
-  ]);
-
-  const counts = {
-    verification: Array.isArray(queueRes.data) ? queueRes.data.length : 0,
-    curated: curatedRes.count ?? 0,
-    courses: coursesRes.count ?? 0,
-    feedback: feedbackRes.count ?? 0,
-    photos: photosRes.count ?? 0,
-    safeguarding: safeguardingRes.count ?? 0,
-    users: usersRes.count ?? 0,
-    crashes: crashesRes.count ?? 0,
-    announcements: announcementsRes.count ?? 0,
-    changelog: changelogRes.count ?? 0,
-  };
-
   return (
     <div className="relative min-h-dvh">
-      {/* Animated aurora behind everything; glass surfaces float over it.
-          Content sits at z-10; the fixed sidebar at z-30. */}
-      <AuroraBackdrop />
-      <ScrollProgress />
-      {/* Sidebar is position:fixed at lg+; the right column gets
-          `lg:pl-64` to compensate so the main content never slides
-          under it. On <lg the sidebar is hidden entirely. */}
-      <Sidebar counts={counts} adminRole={admin.role} />
+      {/* ⌘K palette — mounted once, available on every surface. */}
+      <CommandPalette devSwitchEnabled={DEV_SWITCH_ENABLED} currentEnv={env} />
+
+      {/* Sidebar shell paints immediately (no count pips); counts stream in. */}
+      <Suspense fallback={<Sidebar adminRole={admin.role} />}>
+        <SidebarWithCounts adminRole={admin.role} />
+      </Suspense>
+
       <div className="relative z-10 flex min-h-dvh min-w-0 flex-col lg:pl-64">
-        <TopBar admin={admin} env={env} devSwitchEnabled={DEV_SWITCH_ENABLED} counts={counts} />
+        <Suspense
+          fallback={<TopBar admin={admin} env={env} devSwitchEnabled={DEV_SWITCH_ENABLED} />}
+        >
+          <TopBarWithCounts admin={admin} env={env} />
+        </Suspense>
+
         {DEV_SWITCH_ENABLED && env === "dev" && (
           <div className="flex items-start gap-3 border-b border-amber/40 bg-amber/10 px-6 py-2.5 text-xs text-amber">
             <FlaskConical aria-hidden className="mt-0.5 size-4 shrink-0" />
@@ -129,8 +55,23 @@ export default async function DashboardLayout({
             </p>
           </div>
         )}
+
         <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
       </div>
     </div>
+  );
+}
+
+/** Streamed: resolves the badge counts, then renders the sidebar with pips. */
+async function SidebarWithCounts({ adminRole }: { adminRole: AdminRole }) {
+  const counts = await getDashboardCounts();
+  return <Sidebar counts={counts} adminRole={adminRole} />;
+}
+
+/** Streamed: the same cached counts (deduped) feed the mobile-drawer pips. */
+async function TopBarWithCounts({ admin, env }: { admin: AdminUser; env: AdminEnvKey }) {
+  const counts = await getDashboardCounts();
+  return (
+    <TopBar admin={admin} env={env} devSwitchEnabled={DEV_SWITCH_ENABLED} counts={counts} />
   );
 }

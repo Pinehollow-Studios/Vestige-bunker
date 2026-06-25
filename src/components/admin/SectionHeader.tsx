@@ -6,31 +6,27 @@ type Props = {
   actions?: React.ReactNode;
 };
 
+/**
+ * A page header. Instrument-calm: a small static mint eyebrow (no pulse-ring
+ * theater) over a tight display-sans title — not the old 2.6rem serif. Same
+ * props as before, so every page keeps working.
+ */
 export function SectionHeader({ title, eyebrow, actions }: Props) {
   return (
-    <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div className="space-y-2">
+    <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="space-y-1.5">
         {eyebrow && (
-          <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">
-            <span aria-hidden className="relative inline-flex size-1.5 items-center justify-center">
-              <span
-                className="absolute inset-0 rounded-full border border-brand"
-                style={{ animation: "adm-pulse-ring 2.2s ease-out infinite" }}
-              />
-              <span
-                className="size-1.5 rounded-full bg-brand"
-                style={{ animation: "adm-pulse-dot 1.8s ease-in-out infinite" }}
-              />
-            </span>
+          <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">
+            <span aria-hidden className="size-1.5 rounded-full bg-brand" />
             {eyebrow}
           </p>
         )}
-        <h1 className="display-serif text-[2rem] font-semibold leading-[1.05] tracking-[-0.02em] text-ink sm:text-[2.6rem]">
+        <h1 className="font-display text-2xl font-semibold leading-tight tracking-tight text-ink sm:text-[1.75rem]">
           {title}
         </h1>
       </div>
       {actions && (
-        <div className="flex items-center gap-2 self-start sm:self-end">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           {actions}
         </div>
       )}
@@ -40,20 +36,9 @@ export function SectionHeader({ title, eyebrow, actions }: Props) {
 
 export function ComingSoon({ note }: { note: string }) {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-dashed border-border bg-paper-raised/60 p-12 text-center">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-50"
-        style={{
-          backgroundImage:
-            "radial-gradient(circle at 30% 20%, color-mix(in oklab, var(--brand) 8%, transparent) 0%, transparent 50%)," +
-            "radial-gradient(circle at 80% 70%, color-mix(in oklab, var(--info) 6%, transparent) 0%, transparent 50%)",
-        }}
-      />
-      <div className="relative space-y-2">
-        <p className="font-heading text-base font-semibold text-ink">Not yet wired</p>
-        <p className="mx-auto max-w-md text-sm text-ink-2">{note}</p>
-      </div>
+    <div className="rounded-xl border border-dashed border-border bg-paper-raised/60 p-12 text-center">
+      <p className="font-heading text-base font-semibold text-ink">Not yet wired</p>
+      <p className="mx-auto mt-2 max-w-md text-sm text-ink-2">{note}</p>
     </div>
   );
 }
