@@ -24,6 +24,7 @@
  * "couldn't reach Sentry" placeholder rather than crashing the
  * route, because the local crash row is enough on its own.
  */
+import "server-only";
 
 const SENTRY_API_BASE = "https://sentry.io/api/0";
 

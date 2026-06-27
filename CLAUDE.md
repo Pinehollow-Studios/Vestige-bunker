@@ -441,6 +441,23 @@ canonical write-up lives on disk.
   People/Insight/System groups kept. No schema/data change — presentation only.
   Verified `tsc`/`eslint`/`build`; UI gated behind admin login. Long-form in
   `CHANGELOG.md`.
+- **2026-06-27** — Security hardening pass (full audit + fixes; new
+  `SECURITY.md`). Auth foundation already solid (real `admin_role` gate, verified
+  `getUser()`, fail-closed middleware, server-only secrets). Closed the gaps:
+  **HTTP security headers** in `next.config.ts` (env-derived CSP scoped to
+  Supabase https+wss & Mapbox, `frame-ancestors 'none'`, HSTS, X-Frame-Options
+  DENY, nosniff, Referrer-/Permissions-Policy); **open redirect** in
+  `auth/callback` (`safeNextPath`, `lib/security/redirect.ts`); **PostgREST
+  `.or()` injection** at all sites (`lib/security/postgrest.ts`
+  `sanitizeFilterValue`/`isUuid`, applied in announcements/users/crashes/
+  users[id], api/search refactored); **deps → 0 vulns** (from 11/4-high — `npm
+  audit fix`, Next `16.2.4→^16.2.9` closing the App-Router middleware-bypass/
+  cache-poison/nonce-XSS advisories, `postcss ^8.5.10` override); **login
+  brute-force** in-memory stopgap (`login/actions.ts`, per-instance — KV flagged);
+  `server-only` on `lib/sentry/client.ts`; `robots.ts` disallow-all. Follow-ups
+  (tracked in `SECURITY.md`): nonce-based strict CSP, KV-backed rate limiting. No
+  schema/data change. Verified `tsc`/`eslint`/`build` + `npm audit` clean + login
+  headers/render in-browser. Long-form in `CHANGELOG.md`.
 - **2026-06-27** — Two-group sidebar + anonymous login. Sidebar
   (`components/admin/nav.tsx`) collapsed to just **Editorial** (Jack) +
   **Operations** (Tom) under the pinned Overview — People/Insight/System folded

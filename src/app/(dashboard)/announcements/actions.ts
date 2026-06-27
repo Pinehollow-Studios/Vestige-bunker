@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
+import { sanitizeFilterValue } from "@/lib/security/postgrest";
 import { announcementMediaStorageKey } from "@/lib/storage";
 import type {
   AnnouncementActionKind,
@@ -224,7 +225,8 @@ export async function setTargets(
  */
 export async function searchUsers(query: string): Promise<ActionResult<UserPickRow[]>> {
   await requireAdmin();
-  const q = query.trim();
+  // Sanitise before interpolating into the PostgREST `.or()` filter string.
+  const q = sanitizeFilterValue(query);
   if (q.length < 2) return { ok: true, data: [] };
 
   const supabase = await createClient();
