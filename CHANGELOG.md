@@ -5,6 +5,41 @@
 
 ---
 
+## 2026-06-27 — Course dataset import in the dashboard
+
+Closes Jack's biggest dependency. Course boundary polygons are mapped in the
+separate `Pinehollow-Studios/Fairways-web` app (OSM → Overpass → its hidden
+AdminReview tool → committed `src/courses.js`), then ingested into live Supabase
+by `Vestige-ios/scripts/import-courses` — a terminal step with the service-role
+key that only a developer could run. So Jack's mapped courses couldn't reach the
+app without Tom. This ports that import into the dashboard as a click-through.
+
+- **`lib/courses-import/`** — ports the CLI's pure logic: `source.ts` fetches
+  `src/{counties,courses}.js` from a pinned Fairways-web commit via the GitHub
+  Contents API (raw); `parse.ts` evaluates the `export default` module
+  server-side (no temp file — strips the export + `new Function`); `transform.ts`
+  is copied verbatim (incl. the iOS `slugify`, so `onConflict` upserts match
+  existing rows rather than duplicating); `import.ts` is the idempotent
+  counties→clubs→courses upsert (batched, with the >1000-row pagination fix);
+  `preview.ts` diffs the source against live data by `legacy_fid`.
+- **`/courses/import`** (linked from the Courses header) — a status panel
+  ("up to date" / "N new commits" / "never imported", last-import audit), a
+  **dry-run preview** (new courses w/ names · refreshed · new counties), then
+  **apply**. Reuses the existing service-role client + GitHub plumbing.
+- **Gating** — status + preview are open to any admin (so **Jack** sees what's
+  pending and can dry-run it); **apply is super_admin-only** (it writes live
+  course data). Apply writes a `dataset_imports` audit row and calls
+  `recompute_vestige_index`. Upsert-only — nothing is deleted, so a bad import
+  is undone by re-applying a good commit.
+- **Ops dependency**: the existing `GITHUB_DISPATCH_TOKEN` PAT must gain
+  **Contents:read on Fairways-web** (today it's scoped to the iOS repo). Until
+  then the status panel shows a clear "not configured" notice instead of failing.
+
+No schema/migrations (the `courses`/`counties`/`clubs`/`dataset_imports` tables +
+`recompute_vestige_index` already exist from the iOS side). Verified
+`tsc`/`eslint`/`build` + slugify parity check + the route auth-gates cleanly.
+Full logged-in flow not exercised headlessly (auth + token + prod write).
+
 ## 2026-06-27 — Declutter: drop grey helper/description text
 
 Tom + Jack know the tools; the explanatory grey text under section headings and

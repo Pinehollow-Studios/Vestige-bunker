@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, ChevronRight, ImageOff, MapPin } from "lucide-react";
+import { ArrowLeft, ChevronRight, DatabaseZap, ImageOff, MapPin } from "lucide-react";
 import { SectionHeader } from "@/components/admin/SectionHeader";
 import { TableToolbar, TableSelect, FilterChips } from "@/components/admin/table/TableToolbar";
 import { TablePagination } from "@/components/admin/table/TablePagination";
@@ -118,7 +118,19 @@ async function CountyLanding({
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
-      <SectionHeader eyebrow="Editorial" title="Courses" />
+      <SectionHeader
+        eyebrow="Editorial"
+        title="Courses"
+        actions={
+          <Link
+            href="/courses/import"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-rule/70 bg-paper-raised px-3 py-1.5 text-xs font-medium text-ink-2 transition-colors hover:border-brand/40 hover:text-ink"
+          >
+            <DatabaseZap aria-hidden className="size-3.5 text-ink-3" />
+            Course dataset
+          </Link>
+        }
+      />
 
       <TableToolbar
         initialQuery={initialQuery}
