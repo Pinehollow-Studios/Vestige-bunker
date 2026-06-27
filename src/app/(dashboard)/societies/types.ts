@@ -1,121 +1,58 @@
 /**
- * Shared types for the societies admin surface.
+ * Shared types for the societies admin surface — the **modes** editor.
  *
- * The surface is the curated **society templates** workbench — Jack's
- * blueprints that GENERATE a user's own society (see
- * `20260627110000_society_templates.sql`). A template = a mechanic
- * (cooperative `completion` | competitive `race`) × a target set
- * (`county` | `curated_list` | `custom`) × per-county theming.
+ * A society mode is one of a small, fixed, dashboard-editable set of
+ * formats a user picks when creating a society (Chase / Sprint / Match /
+ * Duel — see `20260627130000_society_modes.sql`). The mechanic lives in
+ * code (keyed off `key`); identity, on/off, order, who-can-start, and the
+ * per-mode rule knobs in `config` are editable here.
  *
  * Crest tokens mirror iOS `SocietyCrestView` so the phone renders the
- * real SF Symbol from the `crest` jsonb the admin writes.
+ * real SF Symbol.
  */
 
-/** Wire shape of a `crest` jsonb (template-level or per-county override). */
-export type SocietyCrestData = {
-  glyph?: string | null;
-  color?: string | null;
+export type SocietyCrestData = { glyph?: string | null; color?: string | null };
+
+export type WhoCanStart = "manager" | "anyone";
+
+/** The known mechanic keys (code switches on these). New keys are allowed
+ *  but need a code mechanic before they do anything in the app. */
+export const KNOWN_MODE_KEYS = ["chase", "sprint", "match", "duel"] as const;
+
+/** Per-mode tunable rule knobs (the `config` jsonb). All optional — the
+ *  editor renders the relevant ones per mode key. */
+export type ModeConfig = {
+  allowed_targets?: string[];
+  default_duration_days?: number | null;
+  min_duration_days?: number | null;
+  max_duration_days?: number | null;
+  allow_open_ended?: boolean;
+  team_count?: number | null;
+  [key: string]: unknown;
 };
 
-export type SocietyTemplateKind = "completion" | "race";
-export type SocietyTemplateTargetType = "county" | "curated_list" | "custom";
-export type SocietyTemplateStatus = "draft" | "live" | "archived";
-
-/** A row from `society_templates`. */
-export type SocietyTemplateRow = {
+export type SocietyModeRow = {
   id: string;
-  slug: string;
+  key: string;
   name: string;
-  kind: SocietyTemplateKind;
-  target_type: SocietyTemplateTargetType | null;
-  fixed_list_id: string | null;
-  name_pattern: string;
-  blurb: string | null;
-  story_template: string | null;
-  crest: SocietyCrestData | null;
-  cover_storage_key: string | null;
-  default_duration_days: number | null;
-  status: SocietyTemplateStatus;
-  featured: boolean;
+  tagline: string | null;
+  description: string | null;
+  glyph: string;
+  color: string;
+  enabled: boolean;
   sort_order: number;
+  who_can_start: WhoCanStart;
+  config: ModeConfig;
   created_at: string;
   updated_at: string;
 };
 
-/** Per-county theming row, as returned by `admin_template_counties()`. */
-export type TemplateCountyStatus = "untouched" | "draft" | "live";
-
-export type TemplateCountyRow = {
-  county_id: string;
-  county_name: string;
-  course_count: number;
-  status: TemplateCountyStatus;
-  has_story: boolean;
-  has_cover: boolean;
-  demand_count: number;
-};
-
-/** The persisted per-county theming record (when one exists). */
-export type TemplateCountyTheme = {
-  template_id: string;
-  county_id: string;
-  status: "draft" | "live";
-  name_override: string | null;
-  story: string | null;
-  crest: SocietyCrestData | null;
-  cover_storage_key: string | null;
-  published_at: string | null;
-};
-
-export type CountyOption = { id: string; name: string };
-export type CuratedListOption = { id: string; name: string };
-
-// ---------------------------------------------------------------------
-// Labels + presentation
-// ---------------------------------------------------------------------
-
-export const TEMPLATE_KIND_LABELS: Record<SocietyTemplateKind, string> = {
-  completion: "Complete together",
-  race: "Race",
-};
-
-export const TEMPLATE_TARGET_LABELS: Record<SocietyTemplateTargetType, string> = {
-  county: "A county",
-  curated_list: "A curated list",
-  custom: "A custom set",
-};
-
-export const TEMPLATE_STATUS_LABELS: Record<SocietyTemplateStatus, string> = {
-  draft: "Draft",
-  live: "Live",
-  archived: "Archived",
-};
-
-/** Coloured chip class per template status — matches the curated surface. */
-export const TEMPLATE_STATUS_CHIP: Record<SocietyTemplateStatus, string> = {
-  draft: "border-border bg-paper-sunken/70 text-ink-2",
-  live: "border-brand/40 bg-brand text-brand-fg",
-  archived: "border-ink-3/30 bg-ink-3/10 text-ink-3",
-};
-
-export const TEMPLATE_STATUS_DOT: Record<SocietyTemplateStatus, string> = {
-  draft: "bg-ink-3/55",
-  live: "bg-brand",
-  archived: "bg-ink-3/40",
-};
-
-/** County-coverage chip class per theming status (the workbench grid). */
-export const COUNTY_STATUS_LABELS: Record<TemplateCountyStatus, string> = {
-  untouched: "Untouched",
-  draft: "Coming soon",
-  live: "Live",
-};
-
-export const COUNTY_STATUS_CHIP: Record<TemplateCountyStatus, string> = {
-  untouched: "border-border bg-paper-sunken/70 text-ink-3",
-  draft: "border-amber/30 bg-amber/10 text-amber",
-  live: "border-brand/40 bg-brand/15 text-brand",
-};
+/** Targets a Chase can complete (the `allowed_targets` knob). */
+export const CHASE_TARGETS: { value: string; label: string }[] = [
+  { value: "county", label: "A county" },
+  { value: "collection", label: "A curated collection" },
+  { value: "custom", label: "A custom set" },
+];
 
 // ---------------------------------------------------------------------
 // Crest tokens — must match iOS `SocietyCrestView.tint(for:)`.
