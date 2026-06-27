@@ -17,7 +17,7 @@ export type WhoCanStart = "manager" | "anyone";
 
 /** The known mechanic keys (code switches on these). New keys are allowed
  *  but need a code mechanic before they do anything in the app. */
-export const KNOWN_MODE_KEYS = ["chase", "sprint", "match", "duel"] as const;
+export const KNOWN_MODE_KEYS = ["chase", "sprint", "match", "duel", "rally", "tour"] as const;
 
 /** Per-mode tunable rule knobs (the `config` jsonb). All optional — the
  *  editor renders the relevant ones per mode key. */
