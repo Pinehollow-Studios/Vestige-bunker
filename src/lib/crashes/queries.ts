@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { sanitizeFilterValue } from "@/lib/security/postgrest";
 import type {
   CrashLevel,
   CrashLinkedFeedback,
@@ -51,11 +52,12 @@ export async function listCrashes(
   if (filters.query) {
     // PostgREST `or` for "either column matches". Wildcard match on
     // both message and culprit; sufficient for the v1 admin's "find
-    // me the crash with this string in it" workflow.
-    const escaped = filters.query.replace(/[*]/g, "");
-    q = q.or(
-      `message.ilike.%${escaped}%,culprit.ilike.%${escaped}%`,
-    );
+    // me the crash with this string in it" workflow. Sanitise the value
+    // first — a raw `,`/`.`/`%` etc. would break out of the filter string.
+    const escaped = sanitizeFilterValue(filters.query);
+    if (escaped.length > 0) {
+      q = q.or(`message.ilike.%${escaped}%,culprit.ilike.%${escaped}%`);
+    }
   }
 
   const { data, error } = await q;

@@ -5,6 +5,47 @@
 
 ---
 
+## 2026-06-27 — Security hardening pass
+
+Full security audit (three parallel sweeps — injection/XSS, secrets/service-role,
+auth/session — plus direct review of every security-critical file and a
+dependency scan) ahead of storing sensitive data. New `SECURITY.md` records the
+model, findings, and tracked follow-ups. The auth foundation was already solid
+(real `admin_role` gate, verified `getUser()`, fail-closed middleware, server-
+only secrets, gitignored `.env`); this closes the gaps.
+
+- **HTTP security headers** (`next.config.ts`, new `headers()`): a CSP built
+  dynamically from the public env (scoped `connect-src` to the Supabase projects
+  over https + wss and Mapbox; `frame-ancestors 'none'`, `object-src 'none'`,
+  `base-uri`/`form-action 'self'`), plus HSTS, `X-Frame-Options: DENY`,
+  `nosniff`, `Referrer-Policy`, `Permissions-Policy`, `X-DNS-Prefetch-Control`.
+  Scripts allow `'unsafe-inline'` for now (pragmatic — Next inline bootstrap, no
+  `dangerouslySetInnerHTML`); `'unsafe-eval'` is dev-only. Nonce-based strict CSP
+  is the tracked follow-up. Verified on the login document (headers present, no
+  CSP violations, page renders).
+- **Open redirect** in `auth/callback` fixed: new `safeNextPath()`
+  (`lib/security/redirect.ts`) rejects non-local `next` (`//host`, `.host`,
+  absolute URLs, backslashes) before `${origin}${next}`.
+- **PostgREST `.or()` filter injection** closed at every site: new
+  `lib/security/postgrest.ts` (`sanitizeFilterValue`, `isUuid`) applied in
+  `announcements/actions.ts`, `users/page.tsx`, `crashes/queries.ts` (was only
+  stripping `*`), and `users/[id]/page.tsx` (UUID-guards the route id →
+  `notFound()`); `api/search` refactored onto the shared helper.
+- **Dependencies → 0 vulnerabilities** (from 11; 4 high). `npm audit fix`
+  (ws/qs), Next `16.2.4 → ^16.2.9` (closes the App-Router middleware-bypass /
+  redirect-cache-poison / nonce-XSS advisories — directly relevant to the auth
+  gate), and a `postcss ^8.5.10` override for the build-time CSS CVE.
+- **Login brute-force stopgap**: in-memory per-IP+email limiter in
+  `login/actions.ts` (8 fails / 15 min), with an honest caveat that it's
+  per-instance and Supabase is the real backstop — Vercel KV/Upstash flagged as
+  the proper fix. Error stays generic (no account enumeration).
+- **Smaller hardening**: `import "server-only"` added to `lib/sentry/client.ts`;
+  `robots.ts` disallow-all (the whole app is private).
+
+No schema/data changes. Verified `tsc`/`eslint`/`build` green, `npm audit` clean,
+login headers + render confirmed in-browser. Authed-page CSP eyeball + the
+nonce-CSP / KV-rate-limit follow-ups are Tom/Jack actions on the live deploy.
+
 ## 2026-06-27 — Two-group sidebar + anonymous login
 
 ### Sidebar collapsed to two groups

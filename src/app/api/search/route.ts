@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { tryCreateServiceClient } from "@/lib/supabase/admin";
+import { sanitizeFilterValue } from "@/lib/security/postgrest";
 
 /**
  * Global command-palette search. Gated to admins; reads from the active view
@@ -35,9 +36,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ groups: [] }, { status: 403 });
   }
 
-  const raw = (req.nextUrl.searchParams.get("q") ?? "").trim();
   // Strip characters that break PostgREST `or` / `ilike` filters.
-  const q = raw.replace(/[,()*%\\]/g, " ").trim();
+  const q = sanitizeFilterValue(req.nextUrl.searchParams.get("q") ?? "");
   if (q.length < 2) {
     return NextResponse.json({ groups: [] satisfies SearchGroup[] });
   }

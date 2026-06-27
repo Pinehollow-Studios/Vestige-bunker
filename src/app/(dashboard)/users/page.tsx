@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight, Search, Users as UsersIcon } from "lucide-react";
 import { SectionHeader } from "@/components/admin/SectionHeader";
 import { activeStorageBaseUrl, createServiceClient } from "@/lib/supabase/admin";
+import { sanitizeFilterValue } from "@/lib/security/postgrest";
 import { avatarURL } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -83,8 +84,12 @@ export default async function UsersPage({
     .range(from, to);
 
   if (q.length > 0) {
-    // citext + ilike — usernames are case-insensitive.
-    query = query.or(`username.ilike.%${q}%,display_name.ilike.%${q}%`);
+    // citext + ilike — usernames are case-insensitive. Sanitise before the
+    // `.or()` filter string to prevent PostgREST filter injection.
+    const safe = sanitizeFilterValue(q);
+    if (safe.length > 0) {
+      query = query.or(`username.ilike.%${safe}%,display_name.ilike.%${safe}%`);
+    }
   }
   if (status) {
     query = query.eq("account_status", status);

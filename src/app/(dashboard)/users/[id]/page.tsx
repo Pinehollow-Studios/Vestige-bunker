@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ChevronRight, Flag, MessageSquareWarning } from "lucide-react";
 import { activeStorageBaseUrl, createServiceClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
+import { isUuid } from "@/lib/security/postgrest";
 import { avatarURL } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { kindLabel, workStageLabel, type FeedbackKind, type FeedbackWorkStage } from "@/lib/feedback/types";
@@ -43,6 +44,9 @@ type RoundRow = { course_id: string; date: string; gross_score: number | null };
 
 export default async function UserHubPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // Reject non-UUID ids up front — they can't match a row and would otherwise
+  // be interpolated into a PostgREST `.or()` filter further down.
+  if (!isUuid(id)) notFound();
   const admin = await requireAdmin();
 
   let supabase;
