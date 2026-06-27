@@ -405,3 +405,24 @@ canonical write-up lives on disk.
   parity (heavy editors stay desktop-first); content pages already reflow. No
   schema/deps. Verified `tsc`/`eslint`/`build`; not yet device-eyeballed.
   Long-form in `CHANGELOG.md`.
+- **2026-06-27** — Vestige Index normalise + county-ify + back-nav fix. The
+  Index surface (shipped 2026-06-26) didn't fit the app and carried a nav bug:
+  the route folder was literally named `index` → URL `/index`, which Next.js
+  normalises onto `/`, colliding with Overview (shared router-cache entry → you
+  kept seeing the Index after clicking Overview). **Renamed `index/` →
+  `vestige-index/`** (`git mv`; repointed the sidebar `href` + the three
+  `revalidatePath` calls in `courses/actions.ts`) — collision now impossible.
+  Reworked `vestige-index/page.tsx` to the Courses-page shape: a county **grid**
+  landing (count · avg Index · amber "N to rank" = courses still at seed
+  prestige 50) drilling into a scoped ranked table. New `IndexMechanics` control
+  panel (the blend formula written out, a live worked example, rarity-swing
+  slider+numeric with last-tuned-by, recompute) replaces the bare
+  `IndexControls`. New `IndexTable` **batch editor**: prestige + source edits
+  stage locally with a live **projected Index** (`formula.ts` `projectIndex`),
+  dirty pips, and a sticky "Save N changes" bar committing via the
+  previously-unused batch RPC `admin_set_courses_prestige` (iOS `20260626250000`)
+  through a new `setCoursesPrestige` action — one recompute per batch, not the
+  per-edit O(n²) of the single-row path (kept for `/courses/[id]`). No schema
+  change (every lever already existed). Verified `tsc`/`eslint`/`build`; `/index`
+  gone, `/vestige-index` registered. Live UI walk-through gated behind the admin
+  login (not driveable headlessly). Long-form in `CHANGELOG.md`.
