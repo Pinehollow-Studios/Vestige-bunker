@@ -196,10 +196,43 @@ export async function setCoursePrestige(
   });
   if (error) return { ok: false, message: error.message };
 
-  revalidatePath("/index");
+  revalidatePath("/vestige-index");
   revalidatePath("/courses");
   revalidatePath(`/courses/${courseId}`);
   return { ok: true, data: (data as number | null) ?? null };
+}
+
+/**
+ * Batch-set editorial prestige (+ optional source) for many courses in one
+ * call via `admin_set_courses_prestige(jsonb)`, which applies every edit then
+ * recomputes the Vestige Index **once** (vs the per-course RPC, which recomputes
+ * the whole table on every single edit). Powers the Index batch editor's
+ * "Save N changes". Validated all-or-nothing: any out-of-range value rejects the
+ * whole batch before it touches the DB. Returns the number of rows updated.
+ */
+export async function setCoursesPrestige(
+  items: { courseId: string; prestige: number; source?: string | null }[],
+): Promise<ActionResult<number>> {
+  if (items.length === 0) return { ok: true, data: 0 };
+  for (const it of items) {
+    if (!Number.isFinite(it.prestige) || it.prestige < 0 || it.prestige > 100) {
+      return { ok: false, message: "Every prestige must be 0–100." };
+    }
+  }
+  const supabase = await createDevClient();
+  const payload = items.map((it) => ({
+    course_id: it.courseId,
+    prestige: Math.round(it.prestige),
+    source: it.source?.trim() || null,
+  }));
+  const { data, error } = await supabase.rpc("admin_set_courses_prestige", {
+    p_items: payload,
+  });
+  if (error) return { ok: false, message: error.message };
+
+  revalidatePath("/vestige-index");
+  revalidatePath("/courses");
+  return { ok: true, data: (data as number | null) ?? 0 };
 }
 
 /** Recompute every course's Vestige Index now (admin "recalculate" button). */
@@ -207,7 +240,7 @@ export async function recomputeVestigeIndex(): Promise<ActionResult<number>> {
   const supabase = await createDevClient();
   const { data, error } = await supabase.rpc("admin_recompute_vestige_index");
   if (error) return { ok: false, message: error.message };
-  revalidatePath("/index");
+  revalidatePath("/vestige-index");
   revalidatePath("/courses");
   return { ok: true, data: (data as number | null) ?? 0 };
 }
@@ -226,7 +259,7 @@ export async function setVestigeIndexSwing(raritySwing: number): Promise<ActionR
     p_rarity_swing: raritySwing,
   });
   if (error) return { ok: false, message: error.message };
-  revalidatePath("/index");
+  revalidatePath("/vestige-index");
   revalidatePath("/courses");
   return { ok: true };
 }

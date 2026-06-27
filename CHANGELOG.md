@@ -5,6 +5,69 @@
 
 ---
 
+## 2026-06-27 — Vestige Index: normalise, county-ify, batch editor + back-nav fix
+
+The Index surface shipped fast (2026-06-26) and didn't fit the rest of the
+dashboard: a single flat ranked table, a bare rarity-swing input, twitchy
+per-row autosave, and no county structure. It also carried a navigation bug.
+This reworks it to the app's house style and gives Jack a deliberate,
+fully-transparent control surface — without touching the iOS schema (every
+lever already exists).
+
+### Back-nav bug (the actual fix)
+
+The route folder was literally named `index`, so its URL was `/index` — which
+Next.js's App Router normalises onto `/`, colliding with the Overview route
+(`(dashboard)/page.tsx`). The two pages shared one router-cache entry, so after
+visiting the Index you kept seeing it when you clicked Overview. **Renamed the
+route `index/` → `vestige-index/`** (`git mv`), repointed the sidebar `href`
+(`components/admin/nav.tsx`) and the three `revalidatePath("/index")` calls in
+`courses/actions.ts`. The collision is now structurally impossible.
+
+### County structure (mirrors Courses)
+
+`vestige-index/page.tsx` now switches on search params exactly like the Courses
+page: no selection → a county **grid** of `glass-panel` tiles (course count,
+average Index, and an amber "N to rank" chip = courses still at the seed
+prestige of 50); picking a county / searching / filtering → the scoped ranked
+table with an "All counties" back-link. Reuses `SectionHeader`,
+`TableToolbar`/`TableSelect`, `TablePagination`, the `unwrap<T>()` helper, and
+the `NO_COUNTY` sentinel pattern.
+
+### Index mechanics, laid bare (`IndexMechanics`)
+
+Replaces the old `IndexControls`. A serious control panel: the blend formula
+written out (`index = clamp(prestige × (1 + swing × (rarity−50)/50), 0, 100)`),
+a **live worked example** that recomputes as you drag, the global **rarity
+swing** as a slider bound to a numeric input (± echoed, "unsaved" hint, Apply),
+"last tuned … by …" from `vestige_index_config.updated_at/updated_by`, and a
+recompute-now action. Sits atop both the landing and the scoped view.
+
+### Batch editor (`IndexTable`)
+
+Prestige + source edits are now **staged, not autosaved**. Each edited row
+previews its **projected Index** live (client-side `projectIndex()` in
+`formula.ts`, the exact per-row formula; tooltip notes other rows can shift a
+point on the global recompute), dirty rows get an amber pip, and a sticky
+**"Save N changes"** bar commits the whole batch in one shot. Expanding a row
+shows its `plays → rarity → index` breakdown and the editorial source note.
+Invalid (out-of-range) cells block the save and flag red.
+
+The commit uses the previously-unused batch RPC `admin_set_courses_prestige`
+(iOS `20260626250000`) via a new `setCoursesPrestige` server action in
+`courses/actions.ts` — one recompute for the whole batch instead of the
+per-edit O(n²) the single-row RPC caused. `setCoursePrestige` stays for the
+`/courses/[id]` `PrestigeEditor`.
+
+### Notes
+
+- No schema changes / no iOS migration — every lever (per-course prestige +
+  source, global rarity swing, recompute, batch set) already shipped. "Full
+  control" = full transparency + batch authority over prestige, not new knobs.
+- `tsc` / `eslint` / `next build` green; `/vestige-index` registered, `/index`
+  gone. Live UI walk-through is gated behind the admin login (not driveable
+  headlessly) — Tom/Jack to eyeball.
+
 ## 2026-06-26 — Vestige Index: per-course prestige editor + ranked Index tab
 
 The Vestige Index is the app's flagship 0–100 per-course metric — editorial
