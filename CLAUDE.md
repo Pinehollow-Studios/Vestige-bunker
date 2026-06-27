@@ -500,3 +500,18 @@ canonical write-up lives on disk.
   analytics stat captions, empty states, sync-misconfig setup steps, bell counts
   (functional, not headings). No schema/data/deps. Verified `tsc`/`eslint`/`build`
   + clean dev boot. Long-form in `CHANGELOG.md`.
+- **2026-06-27** — Course dataset import in the dashboard (`/courses/import`).
+  Ports `Vestige-ios/scripts/import-courses` into `lib/courses-import/`
+  (source/parse/transform/import/preview) so Jack's course+polygon work — mapped
+  in the separate `Fairways-web` app, committed to its `src/courses.js` — can be
+  pulled into live Supabase from a UI instead of a developer terminal. Status
+  panel (up-to-date / N commits behind / last import) + dry-run preview (new
+  courses, refreshed, new counties) open to **any admin** so Jack can see+preview;
+  **apply is super_admin-only** (writes live course data via service-role, audited
+  in `dataset_imports`, then `recompute_vestige_index`). Upsert-only/idempotent;
+  `slugify` ported verbatim so upserts match existing rows. Reuses the `/sync`
+  service-role + GitHub plumbing. **Ops dep**: `GITHUB_DISPATCH_TOKEN` must gain
+  Contents:read on `Pinehollow-Studios/Fairways-web` (else a "not configured"
+  notice). No schema/migrations. Verified `tsc`/`eslint`/`build` + slugify parity
+  + route auth-gates; full logged-in flow not headless-tested. Long-form in
+  `CHANGELOG.md`.
