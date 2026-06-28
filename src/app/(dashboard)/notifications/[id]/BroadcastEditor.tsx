@@ -30,7 +30,7 @@ import {
   type CountyOption,
   type UserPickRow,
 } from "../types";
-import { IOSLockScreen } from "../_components/previews";
+import { IOSNotification, VestigeInboxRow } from "../_components/previews";
 
 const SELECT_CLS =
   "flex h-9 w-full rounded-lg border border-input bg-paper-sunken/40 px-3 py-1 text-sm transition-colors focus-visible:border-brand/60 focus-visible:bg-paper-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30";
@@ -114,8 +114,15 @@ export function BroadcastEditor({
     <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
       {/* Sticky preview + delivery */}
       <div className="space-y-4 lg:sticky lg:top-6 lg:self-start">
-        <IOSLockScreen title={title || "Title"} body={body} />
-        <p className="text-center text-xs text-ink-3">
+        <div className="space-y-1.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">On the lock screen</p>
+          <IOSNotification title={title || "Title"} body={body} />
+        </div>
+        <div className="space-y-1.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">In the app</p>
+          <VestigeInboxRow title={title || "Title"} body={body} icon={<Send className="size-4" />} />
+        </div>
+        <p className="text-xs text-ink-3">
           {destinationURL ? `Tap → ${destinationURL}` : "Tap → opens the inbox"}
         </p>
         <DeliveryCard

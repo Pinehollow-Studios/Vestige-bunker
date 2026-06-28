@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { saveNotificationTemplate, type NotificationTemplateRow } from "./actions";
 import { previewTemplate, TEMPLATE_KINDS, type TemplateKindMeta } from "./templates-meta";
-import { IOSLockScreen, IOSNotification, VestigeInboxRow } from "./_components/previews";
+import { IOSNotification, VestigeInboxRow } from "./_components/previews";
 
 const ICONS: Record<string, ReactNode> = {
   friend_request_received: <UserPlus className="size-4" />,
@@ -181,7 +181,10 @@ function KindEditorModal({
         <div className="grid max-h-[78vh] grid-cols-1 gap-5 overflow-y-auto p-5 md:grid-cols-[260px_1fr]">
           {/* Live previews */}
           <div className="space-y-4">
-            <IOSLockScreen title={pTitle} body={pBody} />
+            <div className="space-y-1.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">On the lock screen</p>
+              <IOSNotification title={pTitle} body={pBody} />
+            </div>
             <div className="space-y-1.5">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">In the app</p>
               <VestigeInboxRow title={iTitle} body={iBody} icon={icon} />
