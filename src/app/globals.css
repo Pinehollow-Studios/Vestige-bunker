@@ -515,3 +515,268 @@ html.sidebar-collapsed .collapse-icon-expanded {
 html.sidebar-collapsed .collapse-icon-collapsed {
   display: inline-flex;
 }
+
+/* ============================================================================
+   Vault gate — the blast-door overlay played by components/admin/VaultGate.
+   Server-rendered closed (covers content from first paint); JS drives it open.
+   ========================================================================= */
+
+.vlt {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  overflow: hidden;
+  background: transparent; /* the doors do the covering, so they reveal cleanly */
+  isolation: isolate;
+}
+
+/* --- Blast doors: two brushed-metal slabs meeting at a mint seam --- */
+.vlt-door {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 51%;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 7px),
+    linear-gradient(176deg, #16242f 0%, #0d1822 52%, #070d14 100%);
+  will-change: transform;
+}
+.vlt-door-l {
+  left: 0;
+  border-right: 1px solid rgba(0, 0, 0, 0.65);
+  box-shadow:
+    inset -1px 0 0 color-mix(in oklab, var(--brand) 55%, transparent),
+    inset -28px 0 70px -22px rgba(0, 0, 0, 0.85);
+}
+.vlt-door-r {
+  right: 0;
+  border-left: 1px solid rgba(0, 0, 0, 0.65);
+  box-shadow:
+    inset 1px 0 0 color-mix(in oklab, var(--brand) 55%, transparent),
+    inset 28px 0 70px -22px rgba(0, 0, 0, 0.85);
+}
+
+.vlt-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(120% 80% at 50% 46%, transparent 38%, rgba(0, 0, 0, 0.62) 100%);
+  z-index: 2;
+}
+
+/* --- Central mechanism --- */
+.vlt-core {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: min(62vmin, 440px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+}
+.vlt-wheel {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 0 26px color-mix(in oklab, var(--brand) 30%, transparent));
+}
+.vlt-ring {
+  fill: none;
+  stroke: color-mix(in oklab, var(--brand) 36%, #25323d);
+  stroke-width: 2;
+}
+.vlt-ring-2 {
+  stroke: color-mix(in oklab, var(--brand) 22%, #1b2630);
+  stroke-width: 8;
+  stroke-dasharray: 3 9;
+}
+.vlt-rivet {
+  fill: color-mix(in oklab, var(--brand) 50%, #2b3a45);
+}
+.vlt-bolt {
+  fill: color-mix(in oklab, var(--brand) 30%, #34434f);
+}
+.vlt-bolts {
+  transform-origin: 100px 100px;
+}
+.vlt-wheel-ring {
+  fill: none;
+  stroke: var(--brand);
+  stroke-width: 4;
+  opacity: 0.85;
+}
+.vlt-spoke {
+  fill: color-mix(in oklab, var(--brand) 70%, #1a2730);
+}
+.vlt-wheel-hub {
+  fill: var(--paper-sunken);
+  stroke: var(--brand);
+  stroke-width: 3;
+}
+.vlt-spokes {
+  transform-origin: 100px 100px;
+}
+.vlt-hub-icon {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--brand);
+  display: inline-flex;
+}
+.vlt-hub-icon svg {
+  width: 9%;
+  min-width: 26px;
+  height: auto;
+}
+
+/* Locked (re-auth) styling — the mint mechanism goes claret and stays shut. */
+.vlt-core-locked .vlt-wheel {
+  filter: drop-shadow(0 0 22px color-mix(in oklab, var(--claret) 40%, transparent));
+  animation: vlt-locked-pulse 1.4s ease-in-out infinite;
+}
+.vlt-core-locked .vlt-ring-1,
+.vlt-core-locked .vlt-wheel-ring,
+.vlt-core-locked .vlt-wheel-hub {
+  stroke: var(--claret);
+}
+.vlt-core-locked .vlt-hub-icon {
+  color: var(--claret);
+}
+
+/* --- Readout --- */
+.vlt-readout {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(46% + min(34vmin, 250px));
+  z-index: 3;
+  text-align: center;
+}
+.vlt-brand {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.42em;
+  font-size: clamp(0.85rem, 2.4vmin, 1.15rem);
+  color: var(--ink);
+  padding-left: 0.42em;
+}
+.vlt-status {
+  margin-top: 0.85rem;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  letter-spacing: 0.32em;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--brand) 80%, var(--ink));
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding-left: 0.32em;
+}
+.vlt-core-locked ~ .vlt-readout .vlt-status {
+  color: var(--claret);
+}
+.vlt-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 10px currentColor;
+  animation: vlt-blink 1s steps(2, jump-none) infinite;
+}
+
+/* ============================== Choreography ============================== */
+
+/* FULL: the post-login ceremony (~2.8s). */
+.vlt[data-mode="full"][data-phase="opening"] .vlt-spokes {
+  animation: vlt-spin 2.8s cubic-bezier(0.3, 0, 0.1, 1) forwards;
+}
+.vlt[data-mode="full"][data-phase="opening"] .vlt-bolts {
+  animation: vlt-retract 2.8s ease forwards;
+}
+.vlt[data-mode="full"][data-phase="opening"] .vlt-core {
+  animation: vlt-core 2.8s ease-in forwards;
+}
+.vlt[data-mode="full"][data-phase="opening"] .vlt-readout {
+  animation: vlt-fade-late 2.8s ease forwards;
+}
+.vlt[data-mode="full"][data-phase="opening"] .vlt-door-l {
+  animation: vlt-door-l 2.8s cubic-bezier(0.7, 0, 0.2, 1) forwards;
+}
+.vlt[data-mode="full"][data-phase="opening"] .vlt-door-r {
+  animation: vlt-door-r 2.8s cubic-bezier(0.7, 0, 0.2, 1) forwards;
+}
+
+/* QUICK: in-tab reload — doors just part, mechanism stays out of the way. */
+.vlt[data-mode="quick"] .vlt-core,
+.vlt[data-mode="quick"] .vlt-readout {
+  display: none;
+}
+.vlt[data-mode="quick"][data-phase="opening"] .vlt-door-l {
+  animation: vlt-door-l-quick 0.72s cubic-bezier(0.7, 0, 0.2, 1) forwards;
+}
+.vlt[data-mode="quick"][data-phase="opening"] .vlt-door-r {
+  animation: vlt-door-r-quick 0.72s cubic-bezier(0.7, 0, 0.2, 1) forwards;
+}
+
+@keyframes vlt-spin {
+  0% { transform: rotate(-28deg); }
+  62% { transform: rotate(992deg); }
+  72% { transform: rotate(958deg); } /* clunk back */
+  100% { transform: rotate(970deg); }
+}
+@keyframes vlt-retract {
+  0%, 60% { transform: scale(1); }
+  70% { transform: scale(0.68); }
+  100% { transform: scale(0.68); }
+}
+@keyframes vlt-core {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.86); }
+  10% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  64% { transform: translate(-50%, -50%) scale(1); }
+  70% { transform: translate(-50%, -50%) scale(1.05); } /* clunk */
+  74% { transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.55); }
+}
+@keyframes vlt-fade-late {
+  0%, 64% { opacity: 1; }
+  80%, 100% { opacity: 0; }
+}
+@keyframes vlt-door-l {
+  0%, 72% { transform: translateX(0); }
+  100% { transform: translateX(-101%); }
+}
+@keyframes vlt-door-r {
+  0%, 72% { transform: translateX(0); }
+  100% { transform: translateX(101%); }
+}
+@keyframes vlt-door-l-quick {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-101%); }
+}
+@keyframes vlt-door-r-quick {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(101%); }
+}
+@keyframes vlt-blink {
+  0% { opacity: 0.25; }
+  100% { opacity: 1; }
+}
+@keyframes vlt-locked-pulse {
+  0%, 100% { opacity: 0.78; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vlt-door,
+  .vlt-core,
+  .vlt-spokes,
+  .vlt-bolts,
+  .vlt-readout {
+    animation-duration: 0.4s !important;
+  }
+  .vlt-status-dot,
+  .vlt-core-locked .vlt-wheel {
+    animation: none;
+  }
+}

@@ -4,8 +4,24 @@ import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { signIn, type LoginState } from "./actions";
+import { VAULT_TAB_KEY, VAULT_UNLOCK_KEY } from "@/lib/auth/vault";
 
 const initialState: LoginState = { status: "idle" };
+
+/**
+ * Stamp the per-tab session markers the instant a sign-in is attempted. They
+ * ride the same-tab navigation into the dashboard, where the vault gate reads
+ * them: `tab` proves this tab authenticated (a reopened tab lacks it → forced
+ * re-login); `unlock` triggers the one-shot vault-opening sequence.
+ */
+function markSignInAttempt() {
+  try {
+    sessionStorage.setItem(VAULT_TAB_KEY, "1");
+    sessionStorage.setItem(VAULT_UNLOCK_KEY, "1");
+  } catch {
+    // sessionStorage unavailable — the gate fails closed to a re-login.
+  }
+}
 
 /**
  * Deliberately anonymous sign-in. No branding, headings, help text, or product
@@ -38,7 +54,12 @@ export default function LoginPage() {
           required
           className="h-10"
         />
-        <Button type="submit" className="h-10 w-full" disabled={pending}>
+        <Button
+          type="submit"
+          className="h-10 w-full"
+          disabled={pending}
+          onClick={markSignInAttempt}
+        >
           {pending ? "…" : "Sign in"}
         </Button>
         {state.status === "error" && state.message && (

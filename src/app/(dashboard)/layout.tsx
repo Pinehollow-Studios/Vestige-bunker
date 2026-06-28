@@ -4,6 +4,7 @@ import { FlaskConical } from "lucide-react";
 import { Sidebar } from "@/components/admin/Sidebar";
 import { TopBar } from "@/components/admin/TopBar";
 import { CommandPalette } from "@/components/admin/CommandPalette";
+import { VaultGate } from "@/components/admin/VaultGate";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { getDashboardCounts } from "@/lib/admin/counts";
 import { activeEnvKey, DEV_SWITCH_ENABLED, ENV_COOKIE } from "@/lib/supabase/env";
@@ -30,6 +31,10 @@ export default async function DashboardLayout({
 
   return (
     <div className="relative min-h-dvh">
+      {/* Vault gate - seals the dashboard on a fresh tab (forced re-login) and
+          plays the unlock sequence after sign-in. Covers from first paint. */}
+      <VaultGate />
+
       {/* ⌘K palette - mounted once, available on every surface. */}
       <CommandPalette devSwitchEnabled={DEV_SWITCH_ENABLED} currentEnv={env} />
 
