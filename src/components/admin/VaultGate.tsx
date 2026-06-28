@@ -1,52 +1,76 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Lock } from "lucide-react";
+import { Lock, LockOpen } from "lucide-react";
 import { signOut } from "@/app/(dashboard)/actions";
 import { VAULT_TAB_KEY, VAULT_UNLOCK_KEY } from "@/lib/auth/vault";
 
 /**
- * The vault gate — a full-screen blast-door overlay that sits over the whole
+ * The vault gate — a centered, secure-unlock overlay that sits over the whole
  * dashboard on first paint and does two jobs:
  *
  * 1. **Re-auth on a fresh tab.** sessionStorage is per-tab and dies with the
  *    tab. If the "this tab authenticated" stamp is missing (a reopened tab),
  *    the session is torn down via {@link signOut} and the operator is bounced
- *    back to the login screen — you re-enter the vault every time you reopen it.
+ *    back to the login screen — you re-authenticate every time you reopen it.
  *
- * 2. **The unlock theatre.** Straight after a successful sign-in the gate plays
- *    a big vault-opening sequence (spinning wheel → bolts retract → blast doors
- *    part) before revealing the dashboard. A plain in-tab reload gets a quick
- *    unseal instead; reduced-motion gets an instant reveal.
+ * 2. **The unlock sequence.** Straight after a successful sign-in the gate runs
+ *    a precise lock-disengage sequence (sweeping progress ring → padlock snaps
+ *    open) and then *pulls the real dashboard into focus* behind it: the page
+ *    itself is the reveal, sharpening from a blur as the overlay clears (driven
+ *    by the `data-vault` attribute on <html>, see globals.css `.vault-reveal`).
+ *    A plain in-tab reload gets a quick veil; reduced-motion gets an instant
+ *    reveal.
  *
- * Because the overlay is server-rendered closed by default it also stops any
- * secure content from flashing on a reopened tab before the logout fires.
+ * Because the overlay is server-rendered closed it also stops secure content
+ * from flashing on a reopened tab before the logout fires.
  */
 
 type Phase = "sealed" | "opening" | "relock" | "open";
 type Mode = "full" | "quick";
 
-// Rivet ring + retracting bolts, computed deterministically. Coordinates are
-// rounded so server and client agree to the digit — Math.cos/sin can differ by
-// ~1e-14 across JS engines, which would otherwise trip a hydration mismatch.
+// Dial tick ring, computed deterministically. Coordinates are rounded so server
+// and client agree to the digit — Math.cos/sin differ by ~1e-14 across JS
+// engines, which would otherwise trip a hydration mismatch.
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
-const RIVETS = Array.from({ length: 18 }, (_, i) => {
-  const a = (i / 18) * Math.PI * 2;
-  return { x: round3(100 + Math.cos(a) * 86), y: round3(100 + Math.sin(a) * 86) };
+const TICKS = Array.from({ length: 48 }, (_, i) => {
+  const a = (i / 48) * Math.PI * 2;
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  const major = i % 4 === 0;
+  const inner = major ? 76 : 80;
+  return {
+    x1: round3(100 + c * inner),
+    y1: round3(100 + s * inner),
+    x2: round3(100 + c * 87),
+    y2: round3(100 + s * 87),
+    major,
+  };
 });
-const BOLTS = Array.from({ length: 8 }, (_, i) => (i / 8) * 360);
 
 const FULL_SEQUENCE: [number, string][] = [
-  [0, "AUTHENTICATING"],
-  [780, "DECRYPTING SESSION"],
-  [1560, "RETRACTING BOLTS"],
-  [2160, "VAULT OPEN"],
+  [0, "Verifying credentials"],
+  [650, "Establishing secure channel"],
+  [1300, "Decrypting workspace"],
+  [1980, "Access granted"],
 ];
+
+const FULL_TOTAL = 2700;
+const FULL_REVEAL = 1980;
+const QUICK_TOTAL = 760;
+const QUICK_REVEAL = 240;
+const REDUCED_TOTAL = 420;
+
+function setReveal(state: string | null) {
+  if (typeof document === "undefined") return;
+  if (state) document.documentElement.dataset.vault = state;
+  else delete document.documentElement.dataset.vault;
+}
 
 export function VaultGate() {
   const [phase, setPhase] = useState<Phase>("sealed");
   const [mode, setMode] = useState<Mode>("full");
-  const [status, setStatus] = useState("SEALED");
+  const [status, setStatus] = useState("Sealed");
 
   useEffect(() => {
     let cancelled = false;
@@ -70,33 +94,36 @@ export function VaultGate() {
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
+    // Keep the page blurred-out behind the overlay from the first frame.
+    setReveal("covered");
+
     // Kick the sequence off the effect body (via rAF) so we never call setState
-    // synchronously on mount. The default "sealed" render keeps content covered
-    // for the one frame until this fires, so nothing flashes through.
+    // synchronously on mount.
     const raf = requestAnimationFrame(() => {
       if (cancelled) return;
       if (!alive) {
-        // Reopened tab → seal it shut and force a full re-login.
         setMode("full");
-        setStatus("RE-AUTHENTICATION REQUIRED");
+        setStatus("Re-authentication required");
         setPhase("relock");
-        after(900, () => void signOut());
-        // Belt-and-braces: if the action can't redirect for any reason.
+        after(950, () => void signOut());
         after(4000, () => window.location.assign("/login"));
       } else if (reduce) {
         setMode("quick");
         setPhase("opening");
-        after(420, () => setPhase("open"));
+        after(40, () => setReveal("open"));
+        after(REDUCED_TOTAL, () => setPhase("open"));
       } else if (unlock) {
         setMode("full");
         setPhase("opening");
         FULL_SEQUENCE.forEach(([t, s]) => after(t, () => setStatus(s)));
-        after(2900, () => setPhase("open"));
+        after(FULL_REVEAL, () => setReveal("open"));
+        after(FULL_TOTAL, () => setPhase("open"));
       } else {
-        // Plain in-tab reload: a quick unseal, no full ceremony.
+        // Plain in-tab reload: a quick veil, no full ceremony.
         setMode("quick");
         setPhase("opening");
-        after(760, () => setPhase("open"));
+        after(QUICK_REVEAL, () => setReveal("open"));
+        after(QUICK_TOTAL, () => setPhase("open"));
       }
     });
 
@@ -104,6 +131,7 @@ export function VaultGate() {
       cancelled = true;
       cancelAnimationFrame(raf);
       timers.forEach(clearTimeout);
+      setReveal(null);
     };
   }, []);
 
@@ -113,63 +141,54 @@ export function VaultGate() {
 
   return (
     <div className="vlt" data-phase={phase} data-mode={mode} role="presentation" aria-hidden>
-      <div className="vlt-door vlt-door-l" />
-      <div className="vlt-door vlt-door-r" />
-      <div className="vlt-vignette" />
+      <div className="vlt-field" />
 
-      <div className={locked ? "vlt-core vlt-core-locked" : "vlt-core"}>
-        <svg viewBox="0 0 200 200" className="vlt-wheel">
-          <circle cx="100" cy="100" r="94" className="vlt-ring vlt-ring-1" />
-          <circle cx="100" cy="100" r="80" className="vlt-ring vlt-ring-2" />
-          {RIVETS.map((p, i) => (
-            <circle key={i} cx={p.x} cy={p.y} r="2.4" className="vlt-rivet" />
-          ))}
+      <div className="vlt-stage">
+        <div className={locked ? "vlt-emblem vlt-emblem-locked" : "vlt-emblem"}>
+          <svg viewBox="0 0 200 200" className="vlt-svg">
+            <circle cx="100" cy="100" r="87" className="vlt-track" />
+            <g className="vlt-ticks">
+              {TICKS.map((t, i) => (
+                <line
+                  key={i}
+                  x1={t.x1}
+                  y1={t.y1}
+                  x2={t.x2}
+                  y2={t.y2}
+                  className={t.major ? "vlt-tick vlt-tick-major" : "vlt-tick"}
+                />
+              ))}
+            </g>
+            <circle
+              cx="100"
+              cy="100"
+              r="87"
+              className="vlt-progress"
+              pathLength={100}
+              transform="rotate(-90 100 100)"
+            />
+            <circle cx="100" cy="100" r="58" className="vlt-inner" />
+            <g className="vlt-scan">
+              <line x1="100" y1="100" x2="100" y2="44" className="vlt-scan-line" />
+            </g>
+          </svg>
 
-          {/* Radial locking bolts — retract toward the hub on unlock. */}
-          <g className="vlt-bolts">
-            {BOLTS.map((deg, i) => (
-              <rect
-                key={i}
-                x="97"
-                y="18"
-                width="6"
-                height="26"
-                rx="3"
-                className="vlt-bolt"
-                transform={`rotate(${deg} 100 100)`}
-              />
-            ))}
-          </g>
+          <span className="vlt-lock vlt-lock-closed">
+            <Lock strokeWidth={1.75} />
+          </span>
+          <span className="vlt-lock vlt-lock-open">
+            <LockOpen strokeWidth={1.75} />
+          </span>
+          <span className="vlt-pulse" />
+        </div>
 
-          {/* The vault wheel — three-spoke handle that spins as it unlocks. */}
-          <g className="vlt-spokes">
-            <circle cx="100" cy="100" r="46" className="vlt-wheel-ring" />
-            {[0, 120, 240].map((deg) => (
-              <rect
-                key={deg}
-                x="95"
-                y="38"
-                width="10"
-                height="36"
-                rx="5"
-                className="vlt-spoke"
-                transform={`rotate(${deg} 100 100)`}
-              />
-            ))}
-            <circle cx="100" cy="100" r="14" className="vlt-wheel-hub" />
-          </g>
-        </svg>
-        <span className="vlt-hub-icon">
-          <Lock strokeWidth={2.5} />
-        </span>
-      </div>
-
-      <div className="vlt-readout">
-        <p className="vlt-brand">THE BUNKER</p>
-        <p className="vlt-status">
-          <span className="vlt-status-dot" />
-          {status}
-        </p>
+        <div className="vlt-meta">
+          <p className="vlt-brand">THE BUNKER</p>
+          <div className="vlt-bar">
+            <span className="vlt-bar-fill" />
+          </div>
+          <p className="vlt-status">{status}</p>
+        </div>
       </div>
     </div>
   );

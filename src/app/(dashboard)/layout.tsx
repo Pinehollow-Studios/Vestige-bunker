@@ -35,33 +35,36 @@ export default async function DashboardLayout({
           plays the unlock sequence after sign-in. Covers from first paint. */}
       <VaultGate />
 
-      {/* ⌘K palette - mounted once, available on every surface. */}
-      <CommandPalette devSwitchEnabled={DEV_SWITCH_ENABLED} currentEnv={env} />
+      {/* Everything the gate reveals — pulled into focus behind it as it clears. */}
+      <div className="vault-reveal">
+        {/* ⌘K palette - mounted once, available on every surface. */}
+        <CommandPalette devSwitchEnabled={DEV_SWITCH_ENABLED} currentEnv={env} />
 
-      {/* Sidebar shell paints immediately (no count pips); counts stream in. */}
-      <Suspense fallback={<Sidebar adminRole={admin.role} />}>
-        <SidebarWithCounts adminRole={admin.role} />
-      </Suspense>
-
-      <div className="relative z-10 flex min-h-dvh min-w-0 flex-col transition-[padding] duration-200 lg:pl-[var(--sidebar-w)]">
-        <Suspense
-          fallback={<TopBar admin={admin} env={env} devSwitchEnabled={DEV_SWITCH_ENABLED} />}
-        >
-          <TopBarWithCounts admin={admin} env={env} />
+        {/* Sidebar shell paints immediately (no count pips); counts stream in. */}
+        <Suspense fallback={<Sidebar adminRole={admin.role} />}>
+          <SidebarWithCounts adminRole={admin.role} />
         </Suspense>
 
-        {DEV_SWITCH_ENABLED && env === "dev" && (
-          <div className="flex items-start gap-3 border-b border-amber/40 bg-amber/10 px-6 py-2.5 text-xs text-amber">
-            <FlaskConical aria-hidden className="mt-0.5 size-4 shrink-0" />
-            <p className="leading-relaxed">
-              <strong className="font-semibold">Developer dev view.</strong> You&apos;re on the DEV
-              database, not the live app - changes here do not affect TestFlight users. Switch back
-              to prod from the toggle when you&apos;re done.
-            </p>
-          </div>
-        )}
+        <div className="relative z-10 flex min-h-dvh min-w-0 flex-col transition-[padding] duration-200 lg:pl-[var(--sidebar-w)]">
+          <Suspense
+            fallback={<TopBar admin={admin} env={env} devSwitchEnabled={DEV_SWITCH_ENABLED} />}
+          >
+            <TopBarWithCounts admin={admin} env={env} />
+          </Suspense>
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+          {DEV_SWITCH_ENABLED && env === "dev" && (
+            <div className="flex items-start gap-3 border-b border-amber/40 bg-amber/10 px-6 py-2.5 text-xs text-amber">
+              <FlaskConical aria-hidden className="mt-0.5 size-4 shrink-0" />
+              <p className="leading-relaxed">
+                <strong className="font-semibold">Developer dev view.</strong> You&apos;re on the DEV
+                database, not the live app - changes here do not affect TestFlight users. Switch back
+                to prod from the toggle when you&apos;re done.
+              </p>
+            </div>
+          )}
+
+          <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+        </div>
       </div>
     </div>
   );
