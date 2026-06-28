@@ -200,6 +200,52 @@ export async function searchUsers(query: string): Promise<ActionResult<UserPickR
   return { ok: true, data: (data ?? []) as UserPickRow[] };
 }
 
+// ── Notification copy templates ─────────────────────────────────────────
+
+export type NotificationTemplateRow = {
+  kind: string;
+  push_title: string | null;
+  push_body: string | null;
+  inbox_title: string | null;
+  inbox_body: string | null;
+  updated_at: string;
+};
+
+/** All overridden templates (kinds with no override simply aren't returned). */
+export async function loadNotificationTemplates(): Promise<ActionResult<NotificationTemplateRow[]>> {
+  await requireAdmin();
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("admin_notification_templates");
+  if (error) return { ok: false, message: error.message };
+  return { ok: true, data: (data as NotificationTemplateRow[] | null) ?? [] };
+}
+
+/**
+ * Upsert a kind's copy template (blank field → revert that field to the
+ * built-in default). Retro-rewrites the in-app copy of already-delivered rows.
+ * Returns how many inbox rows were rewritten.
+ */
+export async function saveNotificationTemplate(
+  kind: string,
+  pushTitle: string,
+  pushBody: string,
+  inboxTitle: string,
+  inboxBody: string,
+): Promise<ActionResult<number>> {
+  await requireAdmin();
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("set_notification_template", {
+    p_kind: kind,
+    p_push_title: pushTitle.trim() || null,
+    p_push_body: pushBody.trim() || null,
+    p_inbox_title: inboxTitle.trim() || null,
+    p_inbox_body: inboxBody.trim() || null,
+  });
+  if (error) return { ok: false, message: error.message };
+  revalidatePath("/notifications/templates");
+  return { ok: true, data: (data as number) ?? 0 };
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────
 
 function isUuid(s: string): boolean {

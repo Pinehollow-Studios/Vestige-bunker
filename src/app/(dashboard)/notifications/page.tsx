@@ -1,4 +1,5 @@
-import { Smartphone } from "lucide-react";
+import Link from "next/link";
+import { Smartphone, SlidersHorizontal } from "lucide-react";
 import { SectionHeader } from "@/components/admin/SectionHeader";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/server";
@@ -33,7 +34,21 @@ export default async function NotificationsPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
-      <SectionHeader eyebrow="Editorial" title="Notifications" actions={<NewBroadcastButton />} />
+      <SectionHeader
+        eyebrow="Editorial"
+        title="Notifications"
+        actions={
+          <div className="flex items-center gap-2">
+            <Link
+              href="/notifications/templates"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-rule/70 bg-paper-sunken/40 px-3 py-1.5 text-sm text-ink-2 transition-colors hover:border-brand/40 hover:text-ink"
+            >
+              <SlidersHorizontal className="size-4" /> Edit copy
+            </Link>
+            <NewBroadcastButton />
+          </div>
+        }
+      />
 
       {notConfigured ? (
         <NotConfigured />
