@@ -105,7 +105,7 @@ export function IndexMechanics({
               ±{pct}% {dirty && <span className="text-amber">· unsaved</span>}
             </span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <input
               id="swing-range"
               type="range"

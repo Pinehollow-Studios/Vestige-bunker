@@ -43,7 +43,7 @@ export function StatsStrip({ stats }: { stats: Stat[] }) {
             <CountUp
               value={isNull ? null : stat.value}
               className={cn(
-                "font-display text-[32px] font-medium leading-none tabular-nums tracking-[-0.02em]",
+                "font-display text-[26px] font-medium leading-none tabular-nums tracking-[-0.02em] sm:text-[32px]",
                 isNull
                   ? "text-ink-3/40"
                   : showAttention

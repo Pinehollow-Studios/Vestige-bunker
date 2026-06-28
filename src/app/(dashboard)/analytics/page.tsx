@@ -160,7 +160,7 @@ export default async function AnalyticsOverviewPage() {
           {hasDaily ? (
             <>
               <AreaChart data={activeSeries} height={150} />
-              <div className="grid grid-cols-2 gap-4 border-t border-rule/60 pt-4">
+              <div className="grid grid-cols-1 gap-4 border-t border-rule/60 pt-4 sm:grid-cols-2">
                 <MiniSeries label="Rounds logged" total={overview.total_rounds} series={roundsSeries} />
                 <MiniSeries label="New signups" total={overview.users_30d} series={signupsSeries} />
               </div>

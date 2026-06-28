@@ -113,8 +113,9 @@ export function QueueFilters({
 
   return (
     <div className="space-y-3 rounded-xl glass-panel p-3">
-      {/* Search + the filters disclosure share one compact row. */}
-      <div className="flex items-center gap-2">
+      {/* Search + the filters disclosure share one compact row (wraps on phones
+          so the search box keeps a usable width). */}
+      <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-1 items-center gap-2 rounded-lg border border-rule/70 bg-paper-sunken/40 px-3 py-1.5">
           <Search aria-hidden className="size-4 text-ink-3" />
           <input

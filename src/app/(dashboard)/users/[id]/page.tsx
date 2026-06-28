@@ -176,7 +176,7 @@ export default async function UserHubPage({ params }: { params: Promise<{ id: st
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         {/* Activity */}
         <div className="min-w-0 space-y-5">
-          <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {stats.map((s) => (
               <div key={s.label} className="rounded-xl glass-panel p-3 text-center">
                 <p className={cn("font-display text-2xl font-semibold tabular-nums", s.alert ? "text-alert" : "text-ink")}>

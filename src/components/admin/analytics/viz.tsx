@@ -34,7 +34,7 @@ export function FunnelBars({ stages }: { stages: { key: string; label: string; c
         const share = top > 0 ? s.count / top : 0;
         return (
           <div key={s.key} className="flex items-center gap-3">
-            <span className="w-24 shrink-0 truncate text-xs text-ink-2">{s.label}</span>
+            <span className="w-20 shrink-0 truncate text-xs text-ink-2 sm:w-24">{s.label}</span>
             <div className="relative h-6 flex-1 overflow-hidden rounded-lg bg-paper-sunken ring-1 ring-inset ring-rule/60">
               <div
                 className="h-full rounded-lg bg-brand/80"
@@ -75,17 +75,19 @@ export function BarList({
     <div className="space-y-2">
       {items.map((it) => (
         <div key={it.key} className="flex items-center gap-3">
-          <span className="w-40 shrink-0 truncate text-xs text-ink-2" title={it.label}>
+          <span className="w-24 shrink-0 truncate text-xs text-ink-2 sm:w-40" title={it.label}>
             {it.label}
           </span>
           <div className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-paper-sunken">
             <div className={cn("h-full rounded-full", fill)} style={{ width: `${(it.value / max) * 100}%` }} />
           </div>
-          <span className="w-16 shrink-0 text-right font-display text-sm tabular-nums text-ink">
+          <span className="w-12 shrink-0 text-right font-display text-sm tabular-nums text-ink sm:w-16">
             {fmt(it.value)}
           </span>
           {it.trailing !== undefined && (
-            <span className="w-16 shrink-0 text-right text-[11px] tabular-nums text-ink-3">{it.trailing}</span>
+            <span className="hidden w-16 shrink-0 text-right text-[11px] tabular-nums text-ink-3 sm:block">
+              {it.trailing}
+            </span>
           )}
         </div>
       ))}

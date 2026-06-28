@@ -210,7 +210,7 @@ export function FeedbackInbox({
                 />
                 Select all
               </div>
-              <ol className="max-h-[70vh] min-h-0 flex-1 divide-y divide-rule/50 overflow-y-auto lg:max-h-none">
+              <ol className="min-h-0 flex-1 divide-y divide-rule/50 lg:overflow-y-auto">
                 {rows.map((row, i) => (
                   <li key={row.report_id} id={`fb-row-${row.report_id}`}>
                     <Row

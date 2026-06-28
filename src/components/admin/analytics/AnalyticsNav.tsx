@@ -6,7 +6,7 @@ import { ANALYTICS_TABS } from "@/lib/analytics/config";
  *  passes its own `active` href (the repo's URL-driven tab idiom). */
 export function AnalyticsNav({ active }: { active: string }) {
   return (
-    <nav className="inline-flex items-center gap-1 rounded-xl glass-panel p-1 text-xs">
+    <nav className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-xl glass-panel p-1 text-xs">
       {ANALYTICS_TABS.map((t) => {
         const isActive = t.href === active;
         return (

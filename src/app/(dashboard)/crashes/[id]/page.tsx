@@ -133,7 +133,7 @@ function CrashHeader({
           </>
         )}
       </div>
-      <h1 className="display-serif text-3xl font-semibold leading-tight text-ink">
+      <h1 className="display-serif text-2xl font-semibold leading-tight break-words text-ink sm:text-3xl">
         {crash.message ?? crash.culprit ?? "(no message)"}
       </h1>
       {crash.culprit && crash.message && (

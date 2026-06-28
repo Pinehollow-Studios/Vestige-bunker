@@ -342,7 +342,7 @@ function StatTile({
       <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-3">
         {label}
       </p>
-      <p className={"mt-2 font-hero text-3xl leading-none tabular-nums " + numClass}>
+      <p className={"mt-2 font-hero text-2xl leading-none tabular-nums sm:text-3xl " + numClass}>
         {value.toLocaleString()}
       </p>
     </div>

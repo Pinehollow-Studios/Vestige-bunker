@@ -104,7 +104,10 @@ export function IndexTable({ rows, raritySwing }: { rows: IndexRow[]; raritySwin
   return (
     <div className="space-y-3">
       <div className="overflow-hidden rounded-xl glass-panel">
-        <table className="w-full text-sm">
+        {/* Horizontal scroll so the batch editor doesn't force the page wider
+            than the viewport on a phone (the other axes already hide columns). */}
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[520px] text-sm">
           <thead>
             <tr className="border-b border-rule/60 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-3">
               <th className="px-3 py-2.5 text-right">#</th>
@@ -238,6 +241,7 @@ export function IndexTable({ rows, raritySwing }: { rows: IndexRow[]; raritySwin
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       {dirtyRows.length > 0 && (
