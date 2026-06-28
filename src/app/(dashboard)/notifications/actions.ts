@@ -242,7 +242,7 @@ export async function saveNotificationTemplate(
     p_inbox_body: inboxBody.trim() || null,
   });
   if (error) return { ok: false, message: error.message };
-  revalidatePath("/notifications/templates");
+  revalidatePath("/notifications");
   return { ok: true, data: (data as number) ?? 0 };
 }
 

@@ -30,6 +30,7 @@ import {
   type CountyOption,
   type UserPickRow,
 } from "../types";
+import { IOSLockScreen } from "../_components/previews";
 
 const SELECT_CLS =
   "flex h-9 w-full rounded-lg border border-input bg-paper-sunken/40 px-3 py-1 text-sm transition-colors focus-visible:border-brand/60 focus-visible:bg-paper-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30";
@@ -113,7 +114,10 @@ export function BroadcastEditor({
     <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
       {/* Sticky preview + delivery */}
       <div className="space-y-4 lg:sticky lg:top-6 lg:self-start">
-        <PreviewCard title={title} body={body} destinationURL={destinationURL} isCritical={isCritical} />
+        <IOSLockScreen title={title || "Title"} body={body} />
+        <p className="text-center text-xs text-ink-3">
+          {destinationURL ? `Tap → ${destinationURL}` : "Tap → opens the inbox"}
+        </p>
         <DeliveryCard
           row={row}
           pending={pending}
@@ -226,38 +230,6 @@ export function BroadcastEditor({
           </Button>
         )}
       </div>
-    </div>
-  );
-}
-
-// ── Live preview ───────────────────────────────────────────────────────
-
-function PreviewCard({
-  title,
-  body,
-  destinationURL,
-  isCritical,
-}: {
-  title: string;
-  body: string;
-  destinationURL: string;
-  isCritical: boolean;
-}) {
-  return (
-    <div className="rounded-xl glass-panel p-4">
-      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">Lock screen</p>
-      <div className="rounded-2xl border border-rule/60 bg-paper-sunken/60 p-3 shadow-sm">
-        <div className="flex items-center gap-2">
-          <span className="flex size-6 items-center justify-center rounded-md bg-brand text-[10px] font-bold text-brand-fg">V</span>
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">Vestige · now</span>
-          {isCritical && <Zap aria-hidden className="size-3 text-alert" />}
-        </div>
-        <p className="mt-1.5 line-clamp-1 text-sm font-semibold text-ink">{title || "Title"}</p>
-        <p className="line-clamp-3 text-sm text-ink-2">{body || "Your message body."}</p>
-      </div>
-      <p className="mt-2 text-xs text-ink-3">
-        {destinationURL ? `Tap → ${destinationURL}` : "Tap → opens the inbox"}
-      </p>
     </div>
   );
 }
